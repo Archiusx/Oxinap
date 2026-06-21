@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment, useRef } from "react";
 import { PieChart, Pie, Cell, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import { auth } from "./firebase";
-import { saveInvestigation, subscribeRecentInvestigations, fetchRecentInvestigations, deleteInvestigation, updateInvestigation, analyzeContent } from "./investigationStore";
+import { saveInvestigation, subscribeRecentInvestigations, fetchRecentInvestigations, deleteInvestigation, updateInvestigation, analyzeContent, grantCaseAccess, listCaseAccess, revokeCaseAccess, fetchSharedWithMe, fetchPendingInvites, acceptCaseInvite, declineCaseInvite } from "./investigationStore";
 import { runPublicOsintInvestigation, detectTargetType, saveRuntimeGeminiApiKey, hasGeminiApiKey } from "./osintTools";
 import { signOut } from "firebase/auth";
 import { useLang, LANGUAGES } from "./LanguageContext";
@@ -66,6 +66,8 @@ const Check = Ico("M20 6 9 17l-5-5");
 const Scan = IcoEl([<path key="p1" d="M3 7V5a2 2 0 0 1 2-2h2"/>,<path key="p2" d="M17 3h2a2 2 0 0 1 2 2v2"/>,<path key="p3" d="M21 17v2a2 2 0 0 1-2 2h-2"/>,<path key="p4" d="M7 21H5a2 2 0 0 1-2-2v-2"/>,<line key="l" x1="7" y1="12" x2="17" y2="12"/>]);
 const MapPin = IcoEl([<path key="p" d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>,<circle key="c" cx="12" cy="10" r="3"/>]);
 const ExternalLink = IcoEl([<path key="p" d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>,<polyline key="pl" points="15 3 21 3 21 9"/>,<line key="l" x1="10" y1="14" x2="21" y2="3"/>]);
+const Lock = IcoEl([<rect key="r" x="3" y="11" width="18" height="11" rx="2" ry="2"/>,<path key="p" d="M7 11V7a5 5 0 0 1 10 0v4"/>]);
+const Trash2 = IcoEl([<polyline key="pl" points="3 6 5 6 21 6"/>,<path key="p1" d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>,<line key="l1" x1="10" y1="11" x2="10" y2="17"/>,<line key="l2" x1="14" y1="11" x2="14" y2="17"/>]);
 
 // ── Language Switcher ──
 function LanguageSwitcher() {
@@ -197,6 +199,7 @@ const navItemDefs = [
   { id:"graph",      tKey:"relationshipGraph", icon:Network,         group:"work" },
   { id:"graph",      tKey:"timeline",          icon:Clock,           group:"work" },
   { id:"content",    tKey:"contentAnalysis",   icon:Hash,            group:"work" },
+  { id:"access",     tKey:"accessControl",     icon:Lock,            group:"work" },
   { id:"report",     tKey:"reports",           icon:FileText,        group:"output" },
   { id:"dashboard",  tKey:"analytics",         icon:BarChart3,       group:"output" },
   { id:"dashboard",  tKey:"settings",          icon:Settings,        group:"system" },
@@ -265,6 +268,7 @@ const pageTitleKeys = {
   "ai-analysis":{ title:"pageTitle_aiAnalysis", sub:"pageSub_aiAnalysis" },
   graph:        { title:"pageTitle_graph",      sub:"pageSub_graph" },
   content:      { title:"Content & Keyword Analysis", sub:"Keyword frequency, hashtags, tone, and cross-posting signals" },
+  access:       { title:"Access Control",             sub:"Manage who can view or edit this case" },
   report:       { title:"pageTitle_report",     sub:"pageSub_report" },
 };
 
@@ -1664,6 +1668,206 @@ function ReportPage({ investigation }) {
 }
 
 // ── Root App ──
+// ── Access Control Page (SOCMINT core feature #1 — authorised access) ──
+function AccessControlPage({ setActivePage, investigation, user, onSelectInvestigation }) {
+  const [grants, setGrants] = useState([]);
+  const [grantsLoading, setGrantsLoading] = useState(false);
+  const [grantsError, setGrantsError] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("viewer");
+  const [submitting, setSubmitting] = useState(false);
+  const [formMsg, setFormMsg] = useState("");
+  const [shared, setShared] = useState([]);
+  const [sharedLoading, setSharedLoading] = useState(true);
+  const [sharedError, setSharedError] = useState("");
+  const [invites, setInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(true);
+  const [invitesError, setInvitesError] = useState("");
+  const [respondingId, setRespondingId] = useState("");
+
+  const loadGrants = () => {
+    if (!investigation?.id || !user) return;
+    setGrantsLoading(true);
+    setGrantsError("");
+    listCaseAccess(user, investigation.id)
+      .then(setGrants)
+      .catch((e) => setGrantsError(e.message || "Failed to load access list."))
+      .finally(() => setGrantsLoading(false));
+  };
+
+  const loadSharedAndInvites = () => {
+    if (!user) return;
+    setSharedLoading(true);
+    fetchSharedWithMe(user)
+      .then(setShared)
+      .catch((e) => setSharedError(e.message || "Failed to load shared cases."))
+      .finally(() => setSharedLoading(false));
+    setInvitesLoading(true);
+    fetchPendingInvites(user)
+      .then(setInvites)
+      .catch((e) => setInvitesError(e.message || "Failed to load pending invites."))
+      .finally(() => setInvitesLoading(false));
+  };
+
+  useEffect(() => { loadGrants(); /* eslint-disable-next-line */ }, [investigation?.id, user]);
+  useEffect(() => { loadSharedAndInvites(); /* eslint-disable-next-line */ }, [user]);
+
+  const isOwner = investigation && investigation.ownerId ? investigation.ownerId === user?.uid : true;
+
+  const handleGrant = async (e) => {
+    e.preventDefault();
+    setFormMsg("");
+    setSubmitting(true);
+    try {
+      await grantCaseAccess(user, investigation.id, email, role);
+      setFormMsg(`✓ Invite sent to ${email.trim().toLowerCase()} (${role}). It stays inactive until they accept it.`);
+      setEmail("");
+      loadGrants();
+    } catch (err) {
+      setFormMsg(`⚠️ ${err.message || "Failed to grant access."}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRevoke = async (grantId) => {
+    try {
+      await revokeCaseAccess(user, grantId);
+      setGrants((g) => g.filter((x) => x.id !== grantId));
+    } catch (err) {
+      setGrantsError(err.message || "Failed to revoke access.");
+    }
+  };
+
+  const handleAccept = async (grantId) => {
+    setRespondingId(grantId);
+    try {
+      await acceptCaseInvite(user, grantId);
+      setInvites((g) => g.filter((x) => x.id !== grantId));
+      loadSharedAndInvites();
+    } catch (err) {
+      setInvitesError(err.message || "Failed to accept invite.");
+    } finally {
+      setRespondingId("");
+    }
+  };
+
+  const handleDecline = async (grantId) => {
+    setRespondingId(grantId);
+    try {
+      await declineCaseInvite(user, grantId);
+      setInvites((g) => g.filter((x) => x.id !== grantId));
+    } catch (err) {
+      setInvitesError(err.message || "Failed to decline invite.");
+    } finally {
+      setRespondingId("");
+    }
+  };
+
+  return <div className="p-4 md:p-6 space-y-5">
+    {/* Pending invites addressed to me — require explicit accept before any case data is visible */}
+    {(invitesLoading || invites.length > 0 || invitesError) && (
+      <div className="rounded-xl p-5" style={{ ...V.card, border:"1px solid rgba(234,179,8,0.4)" }}>
+        <h4 className="font-semibold text-sm flex items-center gap-1.5 mb-1" style={{ color:"var(--text-primary)" }}><Mail size={14} className="text-amber-500"/>Pending Invites
+          {invites.length > 0 && <span className="px-1.5 py-0.5 rounded-full text-white" style={{ background:"#eab308", fontSize:10 }}>{invites.length}</span>}
+        </h4>
+        <p className="text-slate-400 text-xs mb-3">Someone shared a case with you. You won't see any details until you accept — this stops typos or stale invites from quietly exposing case data.</p>
+        {invitesError && <p className="text-xs text-red-500 mb-2">{invitesError}</p>}
+        {invitesLoading ? <p className="text-slate-400 text-xs py-3">Loading…</p> :
+        invites.length === 0 ? null :
+        <div className="space-y-2">
+          {invites.map((inv) => <div key={inv.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg" style={{ background:"rgba(234,179,8,0.08)" }}>
+            <div className="min-w-0">
+              <div className="text-xs font-medium" style={{ color:"var(--text-primary)" }}>Case <span style={{ fontFamily:"monospace" }}>{inv.case_id}</span></div>
+              <div className="text-slate-400" style={{ fontSize:10 }}>Invited as <span className="capitalize font-medium">{inv.role}</span> · details hidden until accepted</div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={()=>handleDecline(inv.id)} disabled={respondingId===inv.id} className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-colors">Decline</button>
+              <button onClick={()=>handleAccept(inv.id)} disabled={respondingId===inv.id} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-medium transition-colors"><Check size={12}/>{respondingId===inv.id?"…":"Accept"}</button>
+            </div>
+          </div>)}
+        </div>}
+      </div>
+    )}
+
+    {/* Case sharing panel */}
+    <div className="rounded-xl p-5" style={V.card}>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h3 className="font-semibold text-sm flex items-center gap-1.5" style={{ color:"var(--text-primary)" }}><Lock size={14} className="text-blue-500"/>Case Access Control</h3>
+        {investigation && <span className="text-xs text-slate-400" style={{ fontFamily:"monospace" }}>{investigation.id}</span>}
+      </div>
+
+      {!investigation ? (
+        <div className="flex flex-col items-center text-center py-10">
+          <Lock size={26} className="text-slate-300 mb-3"/>
+          <p className="text-slate-400 text-xs max-w-sm mb-4">Open or run an investigation first — then come back here to control who else can view or edit that case.</p>
+          <button onClick={()=>setActivePage("osint")} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"><Search size={13}/>Go to OSINT Search</button>
+        </div>
+      ) : !isOwner ? (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg mt-3" style={{ background:"var(--bg-input)" }}>
+          <Info size={14} className="text-amber-500 flex-shrink-0"/>
+          <p className="text-xs" style={{ color:"var(--text-sec)" }}>This case was shared with you — only the case owner can manage access.</p>
+        </div>
+      ) : (
+        <Fragment>
+          <p className="text-slate-400 text-xs mt-0.5 mb-4">Invite other investigators to <span className="font-medium" style={{ color:"var(--text-primary)" }}>{investigation.target}</span> by email. An invite stays <span className="font-medium">pending</span> — and the case stays hidden from them — until they accept it themselves. Viewers can only read the case; editors can also update it.</p>
+
+          <form onSubmit={handleGrant} className="flex flex-col sm:flex-row gap-2 mb-4">
+            <div className="relative flex-1">
+              <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+              <input type="email" required value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="investigator@example.com" className="w-full rounded-lg pl-9 pr-3 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200" style={{ background:"var(--bg-input)", border:"1px solid var(--border)", color:"var(--text-primary)" }}/>
+            </div>
+            <select value={role} onChange={(e)=>setRole(e.target.value)} className="rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" style={{ background:"var(--bg-input)", border:"1px solid var(--border)", color:"var(--text-primary)" }}>
+              <option value="viewer">Viewer (read-only)</option>
+              <option value="editor">Editor (can update)</option>
+            </select>
+            <button type="submit" disabled={submitting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium transition-colors whitespace-nowrap"><Plus size={14}/>{submitting?"Sending…":"Send Invite"}</button>
+          </form>
+          {formMsg && <p className="text-xs mb-4" style={{ color: formMsg.startsWith("✓") ? "#16a34a" : "#dc2626" }}>{formMsg}</p>}
+
+          <h4 className="font-semibold text-xs uppercase tracking-wide mb-2" style={{ color:"var(--text-primary)" }}>Authorised Investigators</h4>
+          {grantsError && <p className="text-xs text-red-500 mb-2">{grantsError}</p>}
+          {grantsLoading ? <p className="text-slate-400 text-xs py-4">Loading…</p> :
+          grants.length===0 ? <p className="text-slate-400 text-xs py-4 text-center rounded-lg" style={{ background:"var(--bg-input)" }}>Only you have access to this case right now.</p> :
+          <div className="space-y-2">
+            {grants.map((g) => <div key={g.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg" style={{ background:"var(--bg-input)" }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white" style={{ background: g.status==="accepted" ? "linear-gradient(135deg,#3b82f6,#4f46e5)" : "linear-gradient(135deg,#cbd5e1,#94a3b8)", fontSize:10, fontWeight:700 }}>{g.grantee_email.slice(0,2).toUpperCase()}</div>
+                <span className="text-xs truncate" style={{ color:"var(--text-primary)" }}>{g.grantee_email}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: g.status==="accepted" ? "rgba(34,197,94,0.12)" : "rgba(234,179,8,0.15)", color: g.status==="accepted" ? "#16a34a" : "#92400e" }}>{g.status==="accepted" ? "Active" : "Pending"}</span>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium capitalize" style={{ background: g.role==="editor" ? "rgba(37,99,235,0.12)" : "rgba(100,116,139,0.12)", color: g.role==="editor" ? "#1d4ed8" : "#475569" }}>{g.role}</span>
+                <button onClick={()=>handleRevoke(g.id)} title="Revoke access" className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={13}/></button>
+              </div>
+            </div>)}
+          </div>}
+        </Fragment>
+      )}
+    </div>
+
+    {/* Cases shared with me (accepted only) */}
+    <div className="rounded-xl p-5" style={V.card}>
+      <h4 className="font-semibold text-sm flex items-center gap-1.5 mb-3" style={{ color:"var(--text-primary)" }}><Users size={14} className="text-indigo-500"/>Shared With Me</h4>
+      {sharedError && <p className="text-xs text-red-500 mb-2">{sharedError}</p>}
+      {sharedLoading ? <p className="text-slate-400 text-xs py-4">Loading…</p> :
+      shared.length===0 ? <p className="text-slate-400 text-xs py-6 text-center rounded-lg" style={{ background:"var(--bg-input)" }}>No accepted shared cases yet — check Pending Invites above if someone shared one with you.</p> :
+      <div className="space-y-2">
+        {shared.map((inv) => <div key={inv.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg" style={{ background:"var(--bg-input)" }}>
+          <div className="min-w-0">
+            <div className="text-xs font-medium truncate" style={{ color:"var(--text-primary)" }}>{inv.target}</div>
+            <div className="text-slate-400" style={{ fontSize:10, fontFamily:"monospace" }}>{inv.id}</div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium capitalize" style={{ background: inv.sharedRole==="editor" ? "rgba(37,99,235,0.12)" : "rgba(100,116,139,0.12)", color: inv.sharedRole==="editor" ? "#1d4ed8" : "#475569" }}>{inv.sharedRole}</span>
+            <button onClick={()=>onSelectInvestigation(inv.fullInvestigation || inv)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors">Open<ChevronRight size={12}/></button>
+          </div>
+        </div>)}
+      </div>}
+    </div>
+  </div>;
+}
+
 export default function App({ user }) {
 const handleLogout = async () => {
   try { await signOut(auth); } catch(e) { console.error("Logout error:", e); }
@@ -1774,6 +1978,7 @@ const handleLogout = async () => {
     vehicle: <VehicleRCPage />,
     graph: <GraphPage setActivePage={setActivePage} dark={dark} investigation={investigation}/>,
     content: <ContentAnalysisPage setActivePage={setActivePage} investigation={investigation}/>,
+    access: <AccessControlPage setActivePage={setActivePage} investigation={investigation} user={user} onSelectInvestigation={handleSelectInvestigation}/>,
     report: <ReportPage dark={dark} investigation={investigation}/>,
   };
 
