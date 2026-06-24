@@ -29,14 +29,15 @@ const ROLE_MAP = {
 const googleProvider = new GoogleAuthProvider();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-// ── Core Helper Utilities ───────────────────────────────────────────────────
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-const validPhone = (p) => /^(\+91)?[6-9]\d{9}$/.test(p.replace(/[\s\-()/]/g, ""));
+const validPhone = (p) => /^[6-9]\d{9}$/.test(p);
+
 function sanitize(s) {
   const d = document.createElement("div");
   d.textContent = s;
   return d.innerHTML;
 }
+
 function authErr(code) {
   return ({
     "auth/email-already-in-use":      "This email is already registered. Please sign in.",
@@ -48,18 +49,16 @@ function authErr(code) {
     "auth/too-many-requests":         "Too many attempts. Please try again later.",
     "auth/popup-closed-by-user":      "Sign-in cancelled.",
     "auth/cancelled-popup-request":   "A sign-in window is already open.",
-    "auth/invalid-phone-number":      "Enter a valid number e.g. +91 9XXXXXXXXX.",
+    "auth/invalid-phone-number":      "Enter a valid 10-digit Indian mobile number.",
     "auth/code-expired":              "OTP expired. Please request a new one.",
     "auth/invalid-verification-code": "Incorrect OTP. Please check and retry.",
-    "permission-denied":           "Firestore rules blocked this write. Deploy the included firestore.rules file and try again.",
-    "failed-precondition":         "Firestore needs an index or configuration change. Check the console for details.",
-    "unavailable":                 "Firestore is temporarily unavailable. Please retry after a moment.",
+    "permission-denied":              "Firestore rules blocked this write. Deploy the included firestore.rules file and try again.",
+    "failed-precondition":            "Firestore needs an index or configuration change. Check the console for details.",
+    "unavailable":                    "Firestore is temporarily unavailable. Please retry after a moment.",
   })[code] || `Error: ${code}`;
 }
 
 // ── The 3 Asynchronous Database Operations ──────────────────────────────────
-
-
 async function setDocAndVerify(docRef, payload, label) {
   await setDoc(docRef, payload, { merge: true });
 
@@ -141,7 +140,7 @@ async function upsertUser(uid, fields = {}, isNew = false) {
 
     const updatePayload = {
       ...mutableProfileFields(fields),
-      uid,                           // always include uid so rules can verify it hasn't changed
+      uid,
       lastLogin: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -149,9 +148,8 @@ async function upsertUser(uid, fields = {}, isNew = false) {
     await setDocAndVerify(userRef, updatePayload, "User profile");
     console.log(`[CyIntel] Firestore profile updated successfully for UID: ${uid}`);
   } catch (e) {
-    // Captures structural issues, network failures, or Permission Denied rules
     console.error("[CyIntel] CRITICAL FIRESTORE STORAGE FAILURE:", e);
-    throw e; // Rethrow to let the main handler catch block display the UI warning
+    throw e;
   }
 }
 
@@ -262,8 +260,8 @@ const methodTabBase = {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const { lang, setLang, t } = useLang();
-  const [tab, setTab]           = useState("login");    // "login" | "register"
-  const [loginMethod, setLoginMethod] = useState("email"); // "email" | "phone"
+  const [tab, setTab]           = useState("login");    
+  const [loginMethod, setLoginMethod] = useState("email"); 
 
   // Login fields
   const [loginEmail, setLoginEmail]       = useState("");
@@ -300,6 +298,17 @@ export default function LoginPage() {
     setRegAlert({ msg: "", type: "error" });
   }
 
+  // Sanitized text value updates
+  const handleLoginPhoneChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, "");
+    setLoginPhone(digits);
+  };
+
+  const handleRegPhoneChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, "");
+    setRegPhone(digits);
+  };
+
   // ── Email Login ────────────────────────────────────────────────────────────
   async function handleEmailLogin() {
     if (!loginEmail || !loginPassword) {
@@ -326,9 +335,6 @@ export default function LoginPage() {
   async function handleGoogleLogin() {
     setLoad("google", true);
     try {
-      // Always use popup — works on both desktop and modern mobile Chrome.
-      // signInWithRedirect was causing a login loop on mobile (redirect token
-      // lost before getRedirectResult could read it), so it has been removed.
       const cred  = await signInWithPopup(auth, googleProvider);
       const user  = cred.user;
       const isNew = cred._tokenResponse?.isNewUser ?? false;
@@ -368,12 +374,17 @@ export default function LoginPage() {
   }
 
   async function handleSendOtp() {
-    const raw       = loginPhone.trim();
-    const formatted = raw.startsWith("+") ? raw : "+91" + raw.replace(/^0/, "");
-    if (!raw) { setLoginAlert({ msg: "Please enter your phone number.", type: "error" }); return; }
-    if (!validPhone(formatted.replace("+", ""))) {
-      setLoginAlert({ msg: "Enter a valid 10-digit Indian mobile number.", type: "error" }); return;
+    const cleanDigits = loginPhone.trim();
+    if (!cleanDigits) { 
+      setLoginAlert({ msg: "Please enter your phone number.", type: "error" }); 
+      return; 
     }
+    if (!validPhone(cleanDigits)) {
+      setLoginAlert({ msg: "Enter a valid 10-digit Indian mobile number.", type: "error" }); 
+      return;
+    }
+    
+    const formatted = "+91" + cleanDigits;
     setLoad("otp", true);
     try {
       initRecaptcha();
@@ -441,7 +452,7 @@ export default function LoginPage() {
     if (!validEmail(email))  { setRegAlert({ msg: "Please enter a valid email address.", type: "error" }); return; }
     if (regPassword.length < 8) { setRegAlert({ msg: "Passphrase must be at least 8 characters.", type: "error" }); return; }
     if (badge.length < 4)    { setRegAlert({ msg: "Please enter a valid Badge / Employee ID.", type: "error" }); return; }
-    if (phone && !validPhone(phone)) { setRegAlert({ msg: "Enter a valid phone number or leave it blank.", type: "error" }); return; }
+    if (phone && !validPhone(phone)) { setRegAlert({ msg: "Enter a valid 10-digit Indian mobile number.", type: "error" }); return; }
 
     setLoad("register", true);
     try {
@@ -455,7 +466,7 @@ export default function LoginPage() {
         uid: user.uid,
         fullName: displayName,
         email,
-        phone,
+        phone: phone ? "+91" + phone : "",
         badgeID: sanitize(badge),
         designation,
         department,
@@ -492,12 +503,10 @@ export default function LoginPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  });
+  }, [tab, loginMethod, otpSent, loginEmail, loginPassword, loginPhone, otp, regName, regBadge, regEmail, regDept, regDesig, regPhone, regPassword]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Inject Google Fonts + FA */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
@@ -533,14 +542,12 @@ export default function LoginPage() {
         background: "radial-gradient(ellipse at top, #0D1835 0%, #050810 60%, #000000 100%)",
         color: "#FFFFFF", position: "relative", overflowX: "hidden",
       }}>
-        {/* Animated background blobs */}
         <div style={{
           position: "fixed", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 0,
           background: "radial-gradient(circle at 20% 80%,rgba(37,99,235,.1) 0%,transparent 50%),radial-gradient(circle at 80% 20%,rgba(29,78,216,.07) 0%,transparent 50%),radial-gradient(circle at 40% 40%,rgba(59,130,246,.08) 0%,transparent 50%)",
           animation: "bgShift 20s ease-in-out infinite",
         }} />
 
-        {/* Language bar */}
         <div style={{ position:"relative", zIndex:10, display:"flex", justifyContent:"flex-end", padding:"12px 20px 0", gap:6 }}>
           {LANGUAGES.map(lng => (
             <button key={lng.code} onClick={() => setLang(lng.code)} style={{
@@ -556,7 +563,6 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* Main layout */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem", position: "relative", zIndex: 1 }}>
           <div style={{
             width: "100%", maxWidth: 1000, background: "#0D1835",
@@ -565,7 +571,6 @@ export default function LoginPage() {
             display: "grid", gridTemplateColumns: "1fr 1fr", overflow: "hidden",
           }} className="cy-auth-container">
 
-            {/* ── Brand Panel ─── */}
             <div style={{
               background: "linear-gradient(135deg,#0D1835 0%,#162448 60%,#0A0F1E 100%)",
               display: "flex", flexDirection: "column", alignItems: "center",
@@ -578,44 +583,27 @@ export default function LoginPage() {
                 backgroundPosition: "10% 20%, 70% 60%",
                 animation: "codeFloat 25s linear infinite",
               }} />
-              <div style={{
-  position: "relative",
-  zIndex: 1,
-  marginBottom: "2rem"
-}}>
-  <img
-    src="https://i.ibb.co/XrMWBwQT/IMG-20260609-WA0033.jpg"
-    alt="CyIntel Logo"
-    style={{
-      width: 80,
-      height: 80,
-      borderRadius: 12,
-      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-      display: "block",
-      marginLeft: "auto",
-      marginRight: "auto",
-      marginBottom: "1.5rem"
-    }}
-  />  <h1 style={{
-    fontSize: "2rem",
-    fontWeight: 700,
-    marginBottom: "0.5rem",
-    margin: 0,
-    background: "linear-gradient(135deg,#fff 0%,#e2e8f0 100%)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    backgroundClip: "text",
-  }}>
-    CyIntel
-  </h1>  <p style={{
-    fontSize: "1rem",
-    opacity: 0.9,
-    margin: "0.5rem 0 2rem",
-    color: "#cbd5e1"
-  }}>
-    Cyber Intelligence Platform - Cyber Investigation Department Karnataka
-  </p>
-</div>
+              <div style={{ position: "relative", zIndex: 1, marginBottom: "2rem" }}>
+                <img
+                  src="https://i.ibb.co/XrMWBwQT/IMG-20260609-WA0033.jpg"
+                  alt="CyIntel Logo"
+                  style={{
+                    width: 80, height: 80, borderRadius: 12,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    display: "block", marginLeft: "auto", marginRight: "auto", marginBottom: "1.5rem"
+                  }}
+                />  
+                <h1 style={{
+                  fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem", margin: 0,
+                  background: "linear-gradient(135deg,#fff 0%,#e2e8f0 100%)",
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                }}>
+                  CyIntel
+                </h1>  
+                <p style={{ fontSize: "1rem", opacity: 0.9, margin: "0.5rem 0 2rem", color: "#cbd5e1" }}>
+                  Cyber Intelligence Platform - Cyber Investigation Department Karnataka
+                </p>
+              </div>
               <ul style={{ listStyle: "none", textAlign: "left", padding: 0, margin: 0, position: "relative", zIndex: 1 }}>
                 {[
                   ["", "Threat Intelligence & Analysis"],
@@ -632,13 +620,11 @@ export default function LoginPage() {
               </ul>
             </div>
 
-            {/* ── Auth Panel ─── */}
             <div style={{
               padding: "3rem 2rem", display: "flex", flexDirection: "column",
               justifyContent: "center", background: "#000000",
               overflowY: "auto", maxHeight: "90vh", position: "relative", zIndex: 1,
             }}>
-              {/* Tab switcher */}
               <div style={{
                 display: "flex", marginBottom: "2rem",
                 background: "#0A1228", borderRadius: 8, padding: "0.25rem",
@@ -657,7 +643,6 @@ export default function LoginPage() {
                 ))}
               </div>
 
-              {/* Restricted banner */}
               <div style={{
                 background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.25)",
                 borderRadius: 8, padding: "0.6rem 1rem", marginBottom: "1.25rem",
@@ -666,12 +651,10 @@ export default function LoginPage() {
                 🛡️ <span>Restricted Access — Authorized CyIntel Personnel Only</span>
               </div>
 
-              {/* ── LOGIN TAB ── */}
               {tab === "login" && (
                 <div>
                   <Alert msg={loginAlert.msg} type={loginAlert.type} />
 
-                  {/* Google Sign-In */}
                   <div style={{ marginBottom: "1rem" }}>
                     <button type="button" onClick={handleGoogleLogin} disabled={!!loading.google}
                       className="cy-btn-google"
@@ -687,7 +670,6 @@ export default function LoginPage() {
                     </button>
                   </div>
 
-                  {/* Divider */}
                   <div style={{
                     display: "flex", alignItems: "center", gap: "0.75rem",
                     margin: "1rem 0", color: "#4A6080", fontSize: "0.8rem",
@@ -697,7 +679,6 @@ export default function LoginPage() {
                     <div style={{ flex: 1, height: 1, background: "#1E3A6E" }} />
                   </div>
 
-                  {/* Method tabs */}
                   <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.25rem" }}>
                     {[["email", "✉️ Email"], ["phone", "📱 Phone OTP"]].map(([m, label]) => (
                       <button key={m} type="button" onClick={() => { setLoginMethod(m); setLoginAlert({ msg: "", type: "error" }); }}
@@ -712,7 +693,6 @@ export default function LoginPage() {
                     ))}
                   </div>
 
-                  {/* Email panel */}
                   {loginMethod === "email" && (
                     <>
                       <div style={{ marginBottom: "1rem" }}>
@@ -743,7 +723,6 @@ export default function LoginPage() {
                     </>
                   )}
 
-                  {/* Phone OTP panel */}
                   {loginMethod === "phone" && (
                     <>
                       <div id={recaptchaElId} />
@@ -752,8 +731,8 @@ export default function LoginPage() {
                         <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
                           <div style={{ position: "relative", flex: 1 }}>
                             <span style={iconStyle}>📱</span>
-                            <input type="tel" value={loginPhone} onChange={e => setLoginPhone(e.target.value)}
-                              placeholder="+91 98XXXXXXXX" autoComplete="tel" inputMode="tel"
+                            <input type="tel" value={loginPhone} onChange={handleLoginPhoneChange}
+                              placeholder="98XXXXXXXX" autoComplete="tel" inputMode="tel" maxLength={10}
                               className="cy-input"
                               style={{ ...inputStyle, color: "#FFFFFF", WebkitTextFillColor: "#FFFFFF" }} />
                           </div>
@@ -769,7 +748,7 @@ export default function LoginPage() {
                             <label style={labelStyle}>Enter OTP</label>
                             <div style={{ position: "relative" }}>
                               <span style={iconStyle}>🔑</span>
-                              <input type="tel" value={otp} onChange={e => setOtp(e.target.value)}
+                              <input type="tel" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
                                 placeholder="6-digit OTP" maxLength={6} autoComplete="one-time-code" inputMode="numeric"
                                 className="cy-input"
                                 style={{ ...inputStyle, color: "#FFFFFF", WebkitTextFillColor: "#FFFFFF" }} />
@@ -787,12 +766,10 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* ── REGISTER TAB ── */}
               {tab === "register" && (
                 <div>
                   <Alert msg={regAlert.msg} type={regAlert.type} />
 
-                  {/* Full Name */}
                   <div style={{ marginBottom: "1rem" }}>
                     <label style={labelStyle}>Full Name <span style={{ color: "#ef4444" }}>*</span></label>
                     <div style={{ position: "relative" }}>
@@ -803,7 +780,6 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Badge ID */}
                   <div style={{ marginBottom: "1rem" }}>
                     <label style={labelStyle}>Officer / Employee ID <span style={{ color: "#ef4444" }}>*</span></label>
                     <div style={{ position: "relative" }}>
@@ -814,7 +790,6 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Email */}
                   <div style={{ marginBottom: "1rem" }}>
                     <label style={labelStyle}>Official Email Address <span style={{ color: "#ef4444" }}>*</span></label>
                     <div style={{ position: "relative" }}>
@@ -825,7 +800,6 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Dept + Designation row */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
                     <div>
                       <label style={labelStyle}>Department / Unit <span style={{ color: "#ef4444" }}>*</span></label>
@@ -873,19 +847,17 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Phone (optional) */}
                   <div style={{ marginBottom: "1rem" }}>
                     <label style={labelStyle}>Contact Number (Optional)</label>
                     <div style={{ position: "relative" }}>
                       <span style={iconStyle}>📞</span>
-                      <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)}
-                        placeholder="+91 98XXXXXXXX" autoComplete="tel" inputMode="tel"
+                      <input type="tel" value={regPhone} onChange={handleRegPhoneChange}
+                        placeholder="98XXXXXXXX" autoComplete="tel" inputMode="tel" maxLength={10}
                         className="cy-input"
                         style={{ ...inputStyle, color: "#FFFFFF", WebkitTextFillColor: "#FFFFFF" }} />
                     </div>
                   </div>
 
-                  {/* Password */}
                   <div style={{ marginBottom: "1rem" }}>
                     <label style={labelStyle}>Set Passphrase <span style={{ color: "#ef4444" }}>*</span></label>
                     <PasswordInput id="registerPassword" placeholder="Min 8 characters"
@@ -903,7 +875,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Footer */}
         <footer style={{
           background: "#0D1835", borderTop: "1px solid #1E3A6E",
           padding: "2rem 1rem", textAlign: "center", position: "relative", zIndex: 1,
@@ -919,7 +890,6 @@ export default function LoginPage() {
           </p>
         </footer>
 
-        {/* Responsive styles */}
         <style>{`
           .cy-auth-container { grid-template-columns: 1fr 1fr !important; }
           @media (max-width: 768px) {
