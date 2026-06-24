@@ -634,9 +634,9 @@ export default function LoginPage() {
                   <button key={t} type="button" onClick={() => { setTab(t); clearAlerts(); }}
                     style={{
                       flex: 1, padding: "0.75rem 1rem", background: tab === t ? "#2563EB" : "transparent",
-                      border: "none", borderRadius: 8, fontWeight: 500, cursor: "pointer",
-                      color: tab === t ? "#fff" : "#A8B8D8", fontSize: "0.875rem", fontFamily: "inherit",
-                      transition: "all 0.3s",
+                      border: "none", borderRadius: 8, fontWeight: "600", cursor: "pointer",
+                      color: tab === t ? "#FFFFFF" : "#94A3B8", fontSize: "0.875rem", fontFamily: "inherit",
+                      transition: "all 0.2s ease-in-out",
                     }}>
                     {t === "login" ? "Secure Login" : "New Registration"}
                   </button>
