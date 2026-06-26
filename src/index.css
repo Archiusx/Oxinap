@@ -1,3 +1,33 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Print / Save as PDF styles ───────────────────────────── */
+@media print {
+  /* Hide everything except the report page */
+  body > * { display: none !important; }
+  #root > * { display: none !important; }
+
+  /* Show only the report content */
+  .print-area {
+    display: block !important;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    background: white;
+    color: black;
+    z-index: 9999;
+  }
+
+  /* Hide nav, buttons, sidebar during print */
+  nav, header, aside, button, .no-print { display: none !important; }
+
+  /* Page breaks */
+  .page-break { page-break-before: always; }
+
+  /* Clean background */
+  * { background: white !important; color: black !important; box-shadow: none !important; }
+
+  /* Show URLs after links */
+  a::after { content: " (" attr(href) ")"; font-size: 10px; }
+}
