@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, Fragment, useRef } from "react";
-import { saveIgPosts, getIgPosts } from "./postsDB";
 import { PieChart, Pie, Cell, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import { auth } from "./firebase";
 import { saveInvestigation, subscribeRecentInvestigations, fetchRecentInvestigations, deleteInvestigation, updateInvestigation, analyzeContent, grantCaseAccess, listCaseAccess, revokeCaseAccess, fetchSharedWithMe, fetchPendingInvites, acceptCaseInvite, declineCaseInvite } from "./investigationStore";
@@ -7,6 +6,7 @@ import { runPublicOsintInvestigation, detectTargetType, saveRuntimeGeminiApiKey,
 import { signOut } from "firebase/auth";
 import { useLang, LANGUAGES } from "./LanguageContext";
 import ImageAnalysisPage from "./ImageAnalysisPage";
+import AssociateNetworkPage from "./AssociateNetworkPage";
 // ── Icons ──
 const Ico = (d) => ({ size=16, className="", style={} }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
@@ -67,11 +67,6 @@ const ChevronDown = Ico("m6 9 6 6 6-6");
 const Check = Ico("M20 6 9 17l-5-5");
 const Scan = IcoEl([<path key="p1" d="M3 7V5a2 2 0 0 1 2-2h2"/>,<path key="p2" d="M17 3h2a2 2 0 0 1 2 2v2"/>,<path key="p3" d="M21 17v2a2 2 0 0 1-2 2h-2"/>,<path key="p4" d="M7 21H5a2 2 0 0 1-2-2v-2"/>,<line key="l" x1="7" y1="12" x2="17" y2="12"/>]);
 const MapPin = IcoEl([<path key="p" d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>,<circle key="c" cx="12" cy="10" r="3"/>]);
-const CreditCard = IcoEl([<rect key="r" x="1" y="4" width="22" height="16" rx="2" ry="2"/>,<line key="l" x1="1" y1="10" x2="23" y2="10"/>]);
-const Award = IcoEl([<circle key="c" cx="12" cy="8" r="7"/>,<polyline key="p1" points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>]);
-const BookOpen = IcoEl([<path key="p1" d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>,<path key="p2" d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>]);
-const Key = IcoEl([<path key="p" d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>]);
-const Building = IcoEl([<rect key="r" x="4" y="2" width="16" height="20" rx="2" ry="2"/>,<path key="p1" d="M9 22v-4h6v4"/>,<path key="p2" d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M8 10h.01M16 10h.01M12 14h.01M8 14h.01M16 14h.01"/>]);
 const ExternalLink = IcoEl([<path key="p" d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>,<polyline key="pl" points="15 3 21 3 21 9"/>,<line key="l" x1="10" y1="14" x2="21" y2="3"/>]);
 const Lock = IcoEl([<rect key="r" x="3" y="11" width="18" height="11" rx="2" ry="2"/>,<path key="p" d="M7 11V7a5 5 0 0 1 10 0v4"/>]);
 const Trash2 = IcoEl([<polyline key="pl" points="3 6 5 6 21 6"/>,<path key="p1" d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>,<line key="l1" x1="10" y1="11" x2="10" y2="17"/>,<line key="l2" x1="14" y1="11" x2="14" y2="17"/>]);
@@ -205,52 +200,29 @@ const V = {
 };
 
 // ── Sidebar ──
-// NOTE: `id` is the page that gets rendered (several nav entries intentionally
-// point at the same page, e.g. "New Investigation" and "OSINT Collection" both
-// open the OSINT page). `navKey` is unique per row and is the ONLY thing used
-// to decide which single sidebar row is highlighted — this keeps multiple
-// entries that share a page id from all lighting up at once.
 const navItemDefs = [
-  { id:"dashboard",  navKey:"dashboard",         tKey:"dashboard",        icon:LayoutDashboard, group:"main" },
-  { id:"osint",      navKey:"osint-collection",  tKey:"osintCollection",   icon:Database,        group:"work" },
-  { id:"osint",      navKey:"new-investigation", tKey:"newInvestigation",  icon:Plus,            group:"main" },
-  { id:"ai-analysis",navKey:"ai-analysis",        tKey:"aiAnalysis",        icon:Brain,           group:"work" },
-  { id:"vehicle",    navKey:"vehicle",            tKey:"vehicleVerify",     icon:Search,          group:"work" },
-  { id:"graph",      navKey:"relationship-graph", tKey:"relationshipGraph", icon:Network,         group:"work" },
-  { id:"graph",      navKey:"timeline",           tKey:"timeline",          icon:Clock,           group:"work" },
-  { id:"content",    navKey:"content",            tKey:"contentAnalysis",   icon:Hash,            group:"work" },
-  { id:"image-analysis", navKey:"image-analysis", tKey:"imageAnalysis",     icon:ImageIcon,       group:"work" },
-  { id:"access",     navKey:"access",             tKey:"accessControl",     icon:Lock,            group:"work" },
-  { id:"report",     navKey:"report",             tKey:"reports",           icon:FileText,        group:"output" },
-  { id:"dashboard",  navKey:"analytics",          tKey:"analytics",         icon:BarChart3,       group:"output" },
-  { id:"settings",   navKey:"settings",           tKey:"settings",          icon:Settings,        group:"system" },
+  { id:"dashboard",  tKey:"dashboard",        icon:LayoutDashboard, group:"main" },
+  { id:"osint",      tKey:"newInvestigation",  icon:Plus,            group:"main" },
+  { id:"osint",      tKey:"osintCollection",   icon:Database,        group:"work" },
+  { id:"ai-analysis",tKey:"aiAnalysis",        icon:Brain,           group:"work" },
+  { id:"vehicle",    tKey:"vehicleVerify",     icon:Search,          group:"work" },
+  { id:"graph",      tKey:"relationshipGraph", icon:Network,         group:"work" },
+  { id:"graph",      tKey:"timeline",          icon:Clock,           group:"work" },
+  { id:"associate-network", tKey:"associateNetwork", icon:Users,     group:"work" },
+  { id:"content",    tKey:"contentAnalysis",   icon:Hash,            group:"work" },
+  { id:"image-analysis", tKey:"imageAnalysis", icon:ImageIcon,       group:"work" },
+  { id:"access",     tKey:"accessControl",     icon:Lock,            group:"work" },
+  { id:"report",     tKey:"reports",           icon:FileText,        group:"output" },
+  { id:"dashboard",  tKey:"analytics",         icon:BarChart3,       group:"output" },
+  { id:"dashboard",  tKey:"settings",          icon:Settings,        group:"system" },
 ];
 
-function Sidebar({ activePage, setActivePage, sidebarOpen, setSidebarOpen, user, onLogout, investigation }) {
+function Sidebar({ activePage, setActivePage, sidebarOpen, setSidebarOpen, user, onLogout }) {
   const { t } = useLang();
   const displayName = user?.fullName || user?.displayName || user?.email?.split("@")[0] || "Operative";
   const designation = user?.designation || user?.role || "Analyst";
   const initials = displayName.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2) || "OP";
   const navItems = navItemDefs.map(item => ({ ...item, label: t[item.tKey] || item.tKey }));
-
-  // Highlighting is keyed off `navKey`, not `id` — several nav rows intentionally
-  // share the same page id (e.g. "New Investigation" / "OSINT Collection" both
-  // open the OSINT page), so highlighting by id would light up every row that
-  // shares it. Clicking a row always sets the exact navKey that was clicked.
-  // If the page changes from somewhere else in the app (stepper, dashboard
-  // buttons, etc.) and the currently-highlighted row no longer matches that
-  // page, fall back to the first nav row defined for that page id.
-  const [activeNavKey, setActiveNavKey] = useState(() => navItemDefs.find(i => i.id === activePage)?.navKey || null);
-  useEffect(() => {
-    const current = navItemDefs.find(i => i.navKey === activeNavKey);
-    if (!current || current.id !== activePage) {
-      setActiveNavKey(navItemDefs.find(i => i.id === activePage)?.navKey || null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePage]);
-
-  const hasActiveCase = !!investigation?.id;
-
   return <Fragment>
     <div className={cn("sidebar-overlay", sidebarOpen?"open":"")} onClick={()=>setSidebarOpen(false)}/>
     <aside className={cn("sidebar-drawer flex flex-col h-full overflow-y-auto scrollbar-thin", sidebarOpen?"open":"")} style={{ width:220, minWidth:220, ...V.sidebar }}>
@@ -263,18 +235,9 @@ function Sidebar({ activePage, setActivePage, sidebarOpen, setSidebarOpen, user,
         <button className="menu-btn ml-auto p-1 rounded text-slate-400 hover:text-white" onClick={()=>setSidebarOpen(false)}><XIcon size={16}/></button>
       </div>
       <nav className="flex-1 py-4 px-2">
-        <div className="mx-2 mb-4 px-3 py-2 rounded-lg" style={hasActiveCase
-          ? { backgroundColor:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.25)" }
-          : { backgroundColor:"var(--sidebar-badge-bg)", border:"1px solid var(--sidebar-badge-border)" }}>
-          <div className="flex items-center gap-2">
-            <span className={cn("w-1.5 h-1.5 rounded-full", hasActiveCase ? "bg-green-400 animate-pulse" : "bg-red-400")}/>
-            <span className={cn("font-medium", hasActiveCase ? "text-green-300" : "text-red-300")} style={{ fontSize:10 }}>
-              {hasActiveCase ? t.activeCase : (t.noActiveCase || "NO ACTIVE CASES")}
-            </span>
-          </div>
-          <div className="text-slate-400 mt-0.5" style={{ fontSize:10, fontFamily:"monospace" }}>
-            {hasActiveCase ? investigation.id : (t.startInvestigationHint || "Start a new investigation")}
-          </div>
+        <div className="mx-2 mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor:"var(--sidebar-badge-bg)", border:"1px solid var(--sidebar-badge-border)" }}>
+          <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"/><span className="text-red-300 font-medium" style={{ fontSize:10 }}>1 {t.activeCase}</span></div>
+          <div className="text-slate-400 mt-0.5" style={{ fontSize:10, fontFamily:"monospace" }}>INV-2024-089</div>
         </div>
         {["main","work","output","system"].map(group => {
           const items = navItems.filter(i=>i.group===group);
@@ -282,9 +245,9 @@ function Sidebar({ activePage, setActivePage, sidebarOpen, setSidebarOpen, user,
           const groupLabel = labelKeys[group] ? (t[labelKeys[group]] || labelKeys[group]).toUpperCase() : "";
           return <div key={group} className={group!=="main"?"pt-3":""}>
             {groupLabel && <div className="px-3 pb-1.5"><span className="font-semibold tracking-widest" style={{ color:"rgba(148,163,184,0.5)", fontSize:10 }}>{groupLabel}</span></div>}
-            {items.map((item) => {
-              const isActive = activeNavKey===item.navKey;
-              return <button key={item.navKey} onClick={()=>{ setActivePage(item.id); setActiveNavKey(item.navKey); setSidebarOpen(false); }} className={cn("w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all", isActive?"text-white":"text-slate-400 hover:text-slate-200")} style={isActive?{ backgroundColor:"var(--bg-active)" }:{}}>
+            {items.map((item,idx) => {
+              const isActive = activePage===item.id;
+              return <button key={`${item.id}-${idx}`} onClick={()=>{ setActivePage(item.id); setSidebarOpen(false); }} className={cn("w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all", isActive?"text-white":"text-slate-400 hover:text-slate-200")} style={isActive?{ backgroundColor:"var(--bg-active)" }:{}}>
                 <item.icon size={15} className={isActive?"text-blue-400":"text-slate-500"}/>
                 <span className="text-sm">{item.label}</span>
                 {isActive && <span className="ml-auto w-1 h-4 rounded-full bg-blue-400"/>}
@@ -318,22 +281,16 @@ const pageTitleKeys = {
   graph:        { title:"pageTitle_graph",      sub:"pageSub_graph" },
   content:      { title:"Content & Keyword Analysis", sub:"Keyword frequency, hashtags, tone, and cross-posting signals" },
   "image-analysis": { title:"Image Analysis", sub:"Standalone OCR, object/landmark detection, EXIF, and language ID — not linked to any case" },
+  "associate-network": { title:"Associate Network Analysis", sub:"Mutual connections, relationship scoring, and interactive account graph" },
   access:       { title:"Access Control",             sub:"Manage who can view or edit this case" },
   report:       { title:"pageTitle_report",     sub:"pageSub_report" },
-  settings:     { title:"Settings", sub:"Your profile, investigation stats, and preferences" },
 };
 
-function TopNav({ activePage, setActivePage, dark, setDark, setSidebarOpen, user, onLogout, investigation }) {
+function TopNav({ activePage, setActivePage, dark, setDark, setSidebarOpen, user, onLogout }) {
   const { t } = useLang();
   const keys = pageTitleKeys[activePage] || pageTitleKeys.dashboard;
   const title = t[keys.title] || keys.title;
-  // A couple of the localized subtitles embed a hardcoded sample case id
-  // ("INV-2024-089") — swap that for whichever case is actually loaded
-  // (or a neutral placeholder when nothing is loaded) instead of always
-  // showing the same fake id.
-  const sub = keys.sub
-    ? (t[keys.sub] || keys.sub).replace("INV-2024-089", investigation?.id || "No case loaded")
-    : "";
+  const sub   = keys.sub ? (t[keys.sub] || keys.sub) : "";
   const displayName = user?.fullName || user?.displayName || user?.email?.split("@")[0] || "Operative";
   const initials = displayName.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2) || "OP";
   const steps = [
@@ -428,8 +385,6 @@ function DashboardPage({ setActivePage, onStartInvestigation, onSelectInvestigat
   const liveItems = recentLoaded ? recentItems.map(normalizeRecentInvestigation) : [];
   const isFirstLoad = !recentLoaded && !recentError;
   const totalCount = liveItems.length;
-  // Unique suspects = distinct target values across all cases
-  const suspectCount = new Set(liveItems.map(i => (i.target || "").toLowerCase().trim()).filter(Boolean)).size;
   const highRiskCount = liveItems.filter(i => ["critical","high"].includes(i.risk)).length;
   const platformCount = new Set(liveItems.flatMap(i => i.platforms || [])).size;
 
@@ -450,10 +405,10 @@ function DashboardPage({ setActivePage, onStartInvestigation, onSelectInvestigat
   })();
 
   const stats = [
-    { label:t.totalInvestigations, value: isFirstLoad ? "—" : String(totalCount),    delta: recentLoaded ? t.syncedFromSupabase : t.loadingDots, icon:Target,        color:"blue"   },
-    { label:t.suspectsIdentified,  value: isFirstLoad ? "—" : String(suspectCount),  delta:t.uniqueCaseTargets,  icon:Users,         color:"indigo" },
-    { label:t.highRiskCases,       value: isFirstLoad ? "—" : String(highRiskCount), delta:t.criticalAndHigh,    icon:AlertTriangle, color:"red"    },
-    { label:t.platformsScanned,    value: isFirstLoad ? "—" : String(platformCount), delta:t.acrossRecentCases,  icon:Globe,         color:"cyan"   },
+    { label:t.totalInvestigations, value: isFirstLoad ? "—" : String(totalCount), delta: recentLoaded ? t.syncedFromSupabase : t.loadingDots, icon:Target, color:"blue" },
+    { label:t.suspectsIdentified,  value: isFirstLoad ? "—" : String(totalCount), delta:t.uniqueCaseTargets,  icon:Users,         color:"indigo" },
+    { label:t.highRiskCases,       value: isFirstLoad ? "—" : String(highRiskCount), delta:t.criticalAndHigh, icon:AlertTriangle, color:"red"   },
+    { label:t.platformsScanned,    value: isFirstLoad ? "—" : String(platformCount), delta:t.acrossRecentCases, icon:Globe,       color:"cyan"  },
   ];
   const colorMap = {
     blue:  { bg:"bg-blue-50",   icon:"text-blue-600",   ring:"ring-blue-100"   },
@@ -499,7 +454,7 @@ function DashboardPage({ setActivePage, onStartInvestigation, onSelectInvestigat
         {investigationError && !investigationError.includes("Supabase save failed") && <p className="mt-2 text-xs text-red-500">{investigationError}</p>}
         {investigationLoading && (
           <div className="mt-3 rounded-lg px-3 py-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 flex items-center gap-2">
-            <Loader2 size={12} className="animate-spin"/>Collecting OSINT data across all platforms — Apify scrapers run in background (1–2 min). Do not close this tab.
+            <Loader2 size={12} className="animate-spin"/>Collecting public OSINT data — this will be saved to your account when complete.
           </div>
         )}
         {savingId && !investigationLoading && (
@@ -744,32 +699,13 @@ function DashboardPage({ setActivePage, onStartInvestigation, onSelectInvestigat
 }
 
 // ── OSINT Page ──
-function OSINTPage({ setActivePage, investigation, investigationLoading, investigationError, onStartInvestigation, onPatchInvestigation }) {
+function OSINTPage({ setActivePage, investigation, investigationLoading, investigationError, onStartInvestigation }) {
   const [target, setTarget] = useState("");
   const [type, setType] = useState("username");
   const [reverseImageUrl, setReverseImageUrl] = useState("");
   const [breachQuery, setBreachQuery] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [geminiConfigured, setGeminiConfigured] = useState(hasGeminiApiKey());
-
-  // ── Instagram Posts Scraper state — declared early so runSearch can reference them ──
-  const [igPosts, setIgPosts]               = useState([]);
-  const [igPostsStatus, setIgPostsStatus]   = useState("idle"); // idle|loading|success|error|timeout
-  const [igPostsOpen, setIgPostsOpen]       = useState(true);
-  const [igPostsTarget, setIgPostsTarget]   = useState("");
-  const igPostsPollRef                      = useRef(null);
-
-  // Load cached posts from IndexedDB when target changes
-  useEffect(() => {
-    if (!igPostsTarget) return;
-    getIgPosts(igPostsTarget).then(cached => {
-      if (cached && cached.length > 0) {
-        setIgPosts(cached);
-        if (igPostsStatus === "idle") setIgPostsStatus("success");
-      }
-    }).catch(() => {});
-  }, [igPostsTarget]);
-
   const steps = ["Input","Collection","Correlation","Analysis","Report"];
   const currentStep = investigation ? 3 : investigationLoading ? 1 : 0;
   const statusIcon = s => {
@@ -805,57 +741,6 @@ function OSINTPage({ setActivePage, investigation, investigationLoading, investi
         .then(r => r.json())
         .then(data => { setIgScrapeData(Array.isArray(data) ? data : []); setIgScrapeStatus("success"); })
         .catch(() => setIgScrapeStatus("error"));
-
-      // ── Auto-fire Instagram Posts scraper ──
-      const cleanTarget = target.trim().replace(/^@/, "");
-      setIgPostsTarget(cleanTarget);
-      setIgPosts([]);
-      setIgPostsStatus("loading");
-      setIgPostsOpen(true);
-      if (igPostsPollRef.current) clearTimeout(igPostsPollRef.current);
-      const CLIENT_TIMEOUT_MS = 3 * 60 * 1000;
-      const postsStartedAt = Date.now();
-      const finalisePosts = (username, posts) => {
-        setIgPosts(posts);
-        setIgPostsStatus("success");
-        saveIgPosts(username, posts).catch(() => {});
-        // ── Inject posts into investigation so AI Analysis & Report can use them ──
-        if (posts.length > 0 && onPatchInvestigation) {
-          // Convert posts to crawledPages format so Gemini/Analysis sees the content
-          const postPages = posts.map((p) => ({
-            url:       p.url ?? `https://www.instagram.com/p/${p.shortCode ?? ""}/`,
-            title:     `Instagram post by @${username}${p.timestamp ? " · " + new Date(p.timestamp).toLocaleDateString() : ""}`,
-            snippet:   [p.caption, p.hashtags?.map(h=>"#"+h).join(" "), p.locationName ? "📍 "+p.locationName : ""].filter(Boolean).join(" · ").slice(0, 400) || "(no caption)",
-            extractor: "Instagram Posts Scraper",
-          }));
-          onPatchInvestigation({
-            instaPosts: posts,
-            // Merge with existing crawledPages so Gemini analysis includes post content
-            crawledPages: [...(investigation?.crawledPages ?? []), ...postPages],
-          });
-        }
-      };
-      const pollPosts = (runId, datasetId) => {
-        if (Date.now() - postsStartedAt > CLIENT_TIMEOUT_MS) { setIgPostsStatus("timeout"); return; }
-        igPostsPollRef.current = setTimeout(async () => {
-          try {
-            const pr = await fetch("/api/scrape-instagram-posts-poll", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({runId,datasetId}) });
-            const pd = await pr.json();
-            if (pr.status===202 && pd.pending) pollPosts(runId, pd.datasetId??datasetId);
-            else if (pr.ok && pd.posts) finalisePosts(cleanTarget, pd.posts);
-            else setIgPostsStatus("error");
-          } catch { setIgPostsStatus("error"); }
-        }, 8000);
-      };
-      (async () => {
-        try {
-          const r = await fetch("/api/scrape-instagram-posts", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({username:cleanTarget,limit:30}) });
-          const d = await r.json();
-          if (r.status===202 && d.pending) pollPosts(d.runId, d.datasetId);
-          else if (r.ok && d.posts) finalisePosts(cleanTarget, d.posts);
-          else setIgPostsStatus("error");
-        } catch { setIgPostsStatus("error"); }
-      })();
 
       // Auto-fire Twitter/X followers scraper via Apify
       setTwScrapeData([]);
@@ -1247,10 +1132,6 @@ function OSINTPage({ setActivePage, investigation, investigationLoading, investi
             : <div key={eng.name} className="block rounded-lg p-3 opacity-50 cursor-not-allowed" style={{ border:"1px solid var(--border)" }}><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-700">{eng.name}</span><ExternalLink size={12} className="text-slate-400"/></div><p className="text-slate-400 mt-1" style={{ fontSize:10 }}>{eng.note}</p></div>
           )}</div>
         </div>
-        {/* Email Intelligence — auto-shows when type is email or breach query is an email */}
-        {(investigation?.type === "email" || (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(breachQuery))) && (
-          <EmailOsintCard email={investigation?.type === "email" ? investigation.target : breachQuery} />
-        )}
       </div>
       <div className="lg:col-span-2 space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 card-grid-4">{[{ label:"Confirmed", value:stats.foundProfiles, color:"text-green-600" },{ label:"Crawled", value:stats.crawledPages || 0, color:"text-blue-600" },{ label:"Sources", value:stats.sources || 0, color:"text-indigo-600" },{ label:"Confidence", value:`${stats.confidence}%`, color:"text-amber-600" }].map(({ label, value, color })=><div key={label} className="rounded-xl px-4 py-3 shadow-sm" style={V.card}><div className={cn("text-lg font-bold tabular-nums", color)} style={{ fontFamily:"monospace" }}>{value}</div><div className="text-xs mt-0.5" style={{ color:"var(--text-muted)" }}>{label}</div></div>)}</div>
@@ -1300,18 +1181,6 @@ function OSINTPage({ setActivePage, investigation, investigationLoading, investi
                 {fields.bio && <FieldCell icon={Info} label="Bio" value={fields.bio} span/>}
                 {fields.category && <FieldCell icon={Flag} label="Category" value={fields.category} span/>}
                 {fields.extUrl && <FieldCell icon={LinkIcon} label="Website" value={fields.extUrl} span/>}
-                {/* ── Reddit-specific fields ── */}
-                {fields.redditPostKarma    && <FieldCell icon={TrendingUp}   label="Post Karma"     value={fields.redditPostKarma}/>}
-                {fields.redditCommentKarma && <FieldCell icon={Hash}         label="Comment Karma"  value={fields.redditCommentKarma}/>}
-                {fields.redditSubreddits   && <FieldCell icon={Globe}        label="Active In"      value={fields.redditSubreddits} span/>}
-                {fields.redditLastActive   && <FieldCell icon={Calendar}     label="Last Active"    value={fields.redditLastActive}/>}
-                {fields.redditIsGold       && <FieldCell icon={Award}        label="Reddit Gold"    value={fields.redditIsGold}/>}
-                {/* ── Google Maps Review fields ── */}
-                {fields.mapsPlace          && <FieldCell icon={MapPin}       label="Reviewed Place" value={fields.mapsPlace} span/>}
-                {fields.mapsRating         && <FieldCell icon={Award}        label="Rating"         value={fields.mapsRating}/>}
-                {fields.mapsReviewDate     && <FieldCell icon={Calendar}     label="Review Date"    value={fields.mapsReviewDate}/>}
-                {fields.mapsReviewsScanned && <FieldCell icon={Eye}          label="Reviews Scanned" value={fields.mapsReviewsScanned}/>}
-                {fields.mapsReviewText     && <FieldCell icon={Info}         label="Review Text"    value={fields.mapsReviewText} span/>}
                 {fields.other.map((o,oi)=><FieldCell key={oi} icon={Hash} label={o.label} value={o.value} span={o.value.length>18}/>)}
               </div>
               {p.snippet && <div className="mt-2 line-clamp-2" style={{ fontSize:10.5, color:"var(--text-sec)" }}>{p.snippet}</div>}
@@ -1330,30 +1199,6 @@ function OSINTPage({ setActivePage, investigation, investigationLoading, investi
             {sourceLinks.length>0 && <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{sourceLinks.slice(0,8).map((src,i)=><a key={`${src.url}-${i}`} href={src.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 hover:bg-blue-100"><ExternalLink size={12}/><span className="truncate">{src.title}</span></a>)}</div>}
           </div>
         </div>
-        {investigation?.deepseekFallback && <div className="rounded-xl shadow-sm" style={V.card}>
-          <div className="flex items-center justify-between px-5 py-3.5" style={V.inner}>
-            <div className="flex items-center gap-2"><Globe size={14} className="text-amber-600"/><h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Fallback Search (DeepSeek)</h3></div>
-            <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"><AlertTriangle size={11}/>Gemini unavailable</span>
-          </div>
-          <div className="p-4 space-y-3">
-            <div className="rounded-xl p-3 text-xs leading-relaxed" style={{ background:"var(--bg-input)", color:"var(--text-sec)", border:"1px solid var(--border)" }}>{investigation.deepseekFallback.summary}</div>
-            {investigation.deepseekFallback.sites?.length>0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {investigation.deepseekFallback.sites.map((site,i)=>(
-                  <a key={`${site.url}-${i}`} href={site.url} target="_blank" rel="noreferrer" className="rounded-lg px-3 py-2.5 hover:shadow-sm transition-all" style={{ border:"1px solid var(--border)", background:"var(--bg-card)" }}>
-                    <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-700 truncate">{site.name}</span><ExternalLink size={11} className="text-slate-400 flex-shrink-0"/></div>
-                    <div className="text-amber-600 truncate mt-0.5" style={{ fontSize:10, fontFamily:"monospace" }}>{site.url}</div>
-                    {site.reason && <p className="mt-1.5 text-slate-500 leading-relaxed line-clamp-2" style={{ fontSize:10.5 }}>{site.reason}</p>}
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl p-4 text-center text-slate-400 text-xs" style={{ border:"1px dashed var(--border)" }}>
-                {investigation.deepseekFallback.enabled ? "DeepSeek returned no parseable site suggestions for this target." : "Add VITE_DEEPSEEK_API_KEY (or DEEPSEEK_API_KEY) to enable the fallback search engine for when Gemini is unavailable."}
-              </div>
-            )}
-          </div>
-        </div>}
         <div className="rounded-xl shadow-sm" style={V.card}>
           <div className="flex items-center justify-between px-5 py-3.5" style={V.inner}><h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Search Operators</h3><span className="text-xs text-slate-400">Open in new tabs</span></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4">{searchLinks.length ? searchLinks.slice(0,12).map((link,i)=><a key={`${link.engine}-${i}`} href={link.url} target="_blank" rel="noreferrer" className="rounded-lg px-3 py-2 hover:bg-slate-50" style={{ border:"1px solid var(--border)" }}><div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-700">{link.engine}</span><ExternalLink size={12} className="text-slate-400"/></div><div className="text-slate-400 truncate mt-1" style={{ fontSize:10, fontFamily:"monospace" }}>{link.query}</div></a>) : <div className="col-span-full text-center text-slate-400 text-sm py-6">Search links will appear here after a run.</div>}</div>
@@ -1362,501 +1207,10 @@ function OSINTPage({ setActivePage, investigation, investigationLoading, investi
           <div className="flex items-center justify-between px-5 py-3.5" style={V.inner}><h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Activity Log</h3><div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"/><span className="text-xs text-green-600 font-medium">Live</span></div></div>
           <div className="px-4 py-3 space-y-2" style={{ maxHeight:192, overflowY:"auto" }}>{logs.map((entry,i)=><div key={i} className="flex items-start gap-3"><span className="tabular-nums text-slate-400 pt-0.5 flex-shrink-0" style={{ fontSize:10, width:64, fontFamily:"monospace" }}>{entry.time}</span><span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", logDot(entry.level))}/><span className={cn("leading-relaxed", logColor(entry.level))} style={{ fontSize:11 }}>{entry.msg}</span></div>)}</div>
         </div>
-
-        {/* ── Instagram Posts Panel ── */}
-        {igPostsStatus !== "idle" && (
-          <div className="rounded-xl shadow-sm overflow-hidden" style={V.card}>
-            <button onClick={()=>setIgPostsOpen(v=>!v)} className="w-full flex items-center justify-between px-5 py-3.5 text-left" style={V.inner}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">📸</span>
-                <h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>
-                  Instagram Posts
-                  {igPostsStatus==="success" && <span className="ml-2 text-xs font-normal" style={{ color:"var(--text-muted)" }}>({igPosts.length} posts)</span>}
-                  {igPostsTarget && <span className="ml-1.5 text-xs font-normal text-pink-500">@{igPostsTarget}</span>}
-                </h3>
-                {igPostsStatus==="loading"  && <Loader2 size={12} className="animate-spin text-pink-500"/>}
-                {igPostsStatus==="success"  && <span className="w-2 h-2 rounded-full bg-green-500"/>}
-                {igPostsStatus==="error"    && <span className="w-2 h-2 rounded-full bg-red-500"/>}
-                {igPostsStatus==="timeout"  && <span className="w-2 h-2 rounded-full bg-amber-400"/>}
-              </div>
-              <ChevronDown size={14} style={{ color:"var(--text-muted)", transform: igPostsOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}/>
-            </button>
-
-            {igPostsOpen && (
-              <div className="p-4">
-                {igPostsStatus==="loading" && (
-                  <div className="flex flex-col items-center gap-3 py-8 text-center">
-                    <Loader2 size={20} className="animate-spin text-pink-500"/>
-                    <div>
-                      <p className="text-sm font-medium" style={{ color:"var(--text-primary)" }}>Collecting posts for @{igPostsTarget}…</p>
-                      <p className="text-xs mt-1" style={{ color:"var(--text-muted)" }}>Instagram scraping can take 1–2 minutes. Hang tight.</p>
-                    </div>
-                  </div>
-                )}
-                {igPostsStatus==="timeout" && (
-                  <div className="py-6 text-center">
-                    <AlertTriangle size={20} className="text-amber-400 mx-auto mb-2"/>
-                    <p className="text-sm font-medium" style={{ color:"var(--text-primary)" }}>Still processing in background</p>
-                    <p className="text-xs mt-1" style={{ color:"var(--text-muted)" }}>Apify is still scraping. Try re-running the search in ~2 min to see results.</p>
-                  </div>
-                )}
-                {igPostsStatus==="error" && (
-                  <div className="py-5 text-center text-xs text-red-400">
-                    Posts scrape failed — check Apify token or try again.
-                  </div>
-                )}
-                {igPostsStatus==="success" && igPosts.length === 0 && (
-                  <div className="py-6 flex flex-col items-center gap-2 text-center">
-                    <span className="text-2xl">📭</span>
-                    <p className="text-sm font-medium" style={{ color:"var(--text-primary)" }}>No posts returned</p>
-                    <p className="text-xs" style={{ color:"var(--text-muted)" }}>Account may be private, or the scraper got an empty dataset. Check Vercel logs or retry.</p>
-                    <button
-                      onClick={() => {
-                        setIgPosts([]);
-                        setIgPostsStatus("loading");
-                        const ct = igPostsTarget;
-                        (async () => {
-                          try {
-                            const r = await fetch("/api/scrape-instagram-posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: ct, limit: 30 }) });
-                            const d = await r.json();
-                            if (r.ok && d.posts) { setIgPosts(d.posts); setIgPostsStatus("success"); saveIgPosts(ct, d.posts).catch(() => {}); }
-                            else setIgPostsStatus("error");
-                          } catch { setIgPostsStatus("error"); }
-                        })();
-                      }}
-                      className="mt-1 px-4 py-1.5 rounded-lg text-xs font-medium bg-pink-500 hover:bg-pink-600 text-white transition-colors"
-                    >
-                      Retry Posts Scrape
-                    </button>
-                  </div>
-                )}
-                {igPostsStatus==="success" && igPosts.length > 0 && (
-                  <>
-                    {/* ── Debug: raw field inspector (shows first post's keys so we can verify field names) ── */}
-                    {process.env.NODE_ENV !== "production" && (
-                      <details className="mb-3 text-xs rounded-lg p-2" style={{ background:"var(--bg-input)", color:"var(--text-muted)" }}>
-                        <summary className="cursor-pointer font-mono">🔍 Debug: first post keys</summary>
-                        <pre className="mt-1 overflow-auto" style={{ fontSize:9, maxHeight:120 }}>
-                          {JSON.stringify(igPosts[0], null, 2)}
-                        </pre>
-                      </details>
-                    )}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {igPosts.map((post, i) => {
-                        // Resolve thumbnail — handle every known field name from Apify actors
-                        const thumb =
-                          post.displayUrl ||
-                          post.thumbnailSrc ||
-                          post.thumbnailUrl ||
-                          post.imageUrl ||
-                          post.previewUrl ||
-                          (Array.isArray(post.images) && post.images.length > 0
-                            ? (typeof post.images[0] === "string" ? post.images[0] : post.images[0]?.url ?? post.images[0]?.src)
-                            : null) ||
-                          null;
-                        const postUrl =
-                          post.url ||
-                          (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : null) ||
-                          (post.code ? `https://www.instagram.com/p/${post.code}/` : null) ||
-                          `https://www.instagram.com/${igPostsTarget}/`;
-                        const likes   = post.likesCount ?? post.likes ?? post.likeCount ?? null;
-                        const comments = post.commentsCount ?? post.commentsNumber ?? post.commentCount ?? post.comments ?? null;
-                        const views   = post.videoViewCount ?? post.videoViews ?? post.viewCount ?? null;
-                        const ts      = post.timestamp ?? post.takenAt ?? post.taken_at ?? null;
-                        const isVideo = post.isVideo ?? post.type === "Video" ?? post.mediaType === 2 ?? false;
-                        return (
-                          <a key={post.id ?? i} href={postUrl}
-                            target="_blank" rel="noopener noreferrer"
-                            className="group rounded-xl overflow-hidden transition-all hover:shadow-md"
-                            style={{ border:"1px solid var(--border)", background:"var(--bg-card)" }}>
-                            {/* Thumbnail */}
-                            <div className="relative w-full" style={{ paddingTop:"100%", background:"var(--bg-input)" }}>
-                              {thumb ? (
-                                <img src={thumb} alt={post.caption?.slice(0,60) ?? "post"}
-                                  referrerPolicy="no-referrer"
-                                  className="absolute inset-0 w-full h-full object-cover"
-                                  onError={e => { e.currentTarget.style.display="none"; e.currentTarget.nextElementSibling.style.display="flex"; }}
-                                />
-                              ) : null}
-                              <div className="absolute inset-0 items-center justify-center flex-col gap-1"
-                                style={{ display: thumb ? "none" : "flex", color:"var(--text-muted)" }}>
-                                <ImageIcon size={20}/>
-                                <span style={{ fontSize:9 }}>No image</span>
-                              </div>
-                              {isVideo && (
-                                <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full text-white"
-                                  style={{ background:"rgba(0,0,0,0.65)", fontSize:9, fontWeight:700 }}>▶ VIDEO</div>
-                              )}
-                            </div>
-                            {/* Meta */}
-                            <div className="p-2.5">
-                              {post.caption && (
-                                <p className="text-xs leading-snug line-clamp-2 mb-1.5" style={{ color:"var(--text-sec)" }}>
-                                  {post.caption}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-3 flex-wrap">
-                                {likes != null && (
-                                  <span className="flex items-center gap-1 text-xs" style={{ color:"var(--text-muted)" }}>
-                                    ❤️ {Number(likes).toLocaleString()}
-                                  </span>
-                                )}
-                                {comments != null && (
-                                  <span className="flex items-center gap-1 text-xs" style={{ color:"var(--text-muted)" }}>
-                                    💬 {Number(comments).toLocaleString()}
-                                  </span>
-                                )}
-                                {views != null && (
-                                  <span className="flex items-center gap-1 text-xs" style={{ color:"var(--text-muted)" }}>
-                                    👁 {Number(views).toLocaleString()}
-                                  </span>
-                                )}
-                              </div>
-                              {post.locationName && (
-                                <p className="text-xs mt-1 truncate" style={{ color:"var(--text-muted)" }}>📍 {post.locationName}</p>
-                              )}
-                              {ts && (
-                                <p className="text-xs mt-0.5" style={{ color:"var(--text-muted)", fontSize:10 }}>
-                                  {new Date(ts).toLocaleDateString(undefined, {day:"numeric",month:"short",year:"numeric"})}
-                                </p>
-                              )}
-                              {post.hashtags?.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1.5">
-                                  {post.hashtags.slice(0,3).map(h => (
-                                    <span key={h} className="text-blue-500 font-medium" style={{ fontSize:9 }}>#{h}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </a>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         <button onClick={()=>setActivePage("ai-analysis")} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"><Brain size={15}/>Proceed to AI Analysis<ChevronRight size={14}/></button>
       </div>
     </div>
   </div>;
-}
-
-// ── Email OSINT Card (Epieos-style) ──────────────────────────────────────────
-
-function EmailOsintCard({ email }) {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState(null);
-  const [error, setError]     = useState("");
-  const [query, setQuery]     = useState(email || "");
-
-  // Auto-run when email prop arrives / changes
-  useEffect(() => {
-    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setQuery(email);
-      runLookup(email);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email]);
-
-  async function runLookup(target) {
-    const addr = (target || query).trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) { setError("Enter a valid email address."); return; }
-    setLoading(true); setError(""); setResult(null);
-    try {
-      const res = await fetch("/api/email-osint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: addr }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lookup failed");
-      setResult(data);
-    } catch (e) {
-      setError(e.message || "Request failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const ServiceIcon = ({ name }) => {
-    const icons = { "Twitter/X":"𝕏", GitHub:"⚙", Spotify:"🎵", Duolingo:"🦉", Adobe:"🅰", Imgur:"🖼", Gravatar:"🌐" };
-    return <span className="mr-1 text-sm">{icons[name] || "🔗"}</span>;
-  };
-
-  const riskColor = (count) => count >= 5 ? "#ef4444" : count >= 2 ? "#f97316" : count >= 1 ? "#eab308" : "#22c55e";
-  const riskLabel = (count) => count >= 5 ? "High Exposure" : count >= 2 ? "Moderate" : count >= 1 ? "Low" : "Clean";
-
-  return (
-    <div className="rounded-xl shadow-sm overflow-hidden" style={{ border:"1px solid var(--border)", background:"var(--bg-card)" }}>
-      {/* Header */}
-      <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom:"1px solid var(--border)", background:"linear-gradient(135deg,#1e3a5f08,#2563eb0a)" }}>
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background:"linear-gradient(135deg,#2563eb,#4f46e5)" }}>
-            <Mail size={13} className="text-white"/>
-          </div>
-          <div>
-            <h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Email Intelligence</h3>
-            <p className="text-xs" style={{ color:"var(--text-muted)" }}>Google Account • Breach Exposure • Service Enumeration</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs" style={{ color:"var(--text-muted)" }}>
-          <Shield size={11}/><span>Epieos-style</span>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-3">
-        {/* Search bar */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Mail size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"/>
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && runLookup()}
-              placeholder="target@email.com"
-              className="w-full rounded-lg pl-8 pr-3 py-2 text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              style={{ background:"var(--bg-input)", border:"1px solid var(--border)", color:"var(--text-primary)" }}
-            />
-          </div>
-          <button
-            onClick={() => runLookup()}
-            disabled={loading}
-            className="px-3 py-2 rounded-lg text-xs font-semibold text-white transition-opacity disabled:opacity-50"
-            style={{ background:"linear-gradient(135deg,#2563eb,#4f46e5)", minWidth:64 }}
-          >
-            {loading ? <Loader2 size={12} className="animate-spin mx-auto"/> : "Search"}
-          </button>
-        </div>
-
-        {error && (
-          <div className="rounded-lg px-3 py-2 text-xs text-red-700 bg-red-50 flex items-center gap-2">
-            <AlertTriangle size={12}/>{error}
-          </div>
-        )}
-
-        {loading && (
-          <div className="rounded-xl p-6 flex flex-col items-center gap-3" style={{ border:"1px solid var(--border)" }}>
-            <Loader2 size={20} className="animate-spin text-blue-500"/>
-            <p className="text-xs text-slate-400">Querying Google, HIBP &amp; service probes…</p>
-          </div>
-        )}
-
-        {result && !loading && (
-          <div className="space-y-3">
-
-            {/* ── Google Account Card ── */}
-            <div className="rounded-xl p-4 space-y-3" style={{ border:"1px solid #e2e8f0", background:"var(--bg-card)" }}>
-              {/* Google logo area */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                  <span className="text-sm font-semibold" style={{ color:"var(--text-primary)" }}>Google Account</span>
-                </div>
-                {result.google?.found
-                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 ring-1 ring-green-200">Found</span>
-                  : <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Not Found</span>}
-              </div>
-
-              {result.google?.found ? (
-                <div className="space-y-2">
-                  {/* Profile photo + name */}
-                  <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background:"var(--bg-input)" }}>
-                    {result.google.profilePhoto ? (
-                      <img src={result.google.profilePhoto} alt="" referrerPolicy="no-referrer"
-                        className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-100"
-                        onError={e => { e.target.style.display="none"; }}/>
-                    ) : (
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg" style={{ background:"#e2e8f0" }}>👤</div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold truncate" style={{ color:"var(--text-primary)" }}>
-                        {result.google.displayName || result.email}
-                      </div>
-                      <div className="text-xs font-mono mt-0.5" style={{ color:"var(--text-muted)" }}>
-                        ID: {result.google.gaiaId}
-                      </div>
-                      {result.google.lastUpdated && (
-                        <div className="text-xs mt-0.5" style={{ color:"var(--text-muted)" }}>
-                          Last updated: {result.google.lastUpdated.slice(0, 10)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Linked Services */}
-                  <div>
-                    <p className="text-xs font-medium mb-1.5" style={{ color:"var(--text-muted)" }}>Linked Services</p>
-                    <div className="space-y-1">
-                      {[
-                        { label:"Google Maps", key:"googleMaps", icon:"🗺" },
-                        { label:"Google Calendar", key:"googleCalendar", icon:"📅" },
-                        { label:"Google+ Archive", key:"googlePlusArchive", icon:"📦" },
-                        { label:"Google Photos", key:"googlePhotos", icon:"📷" },
-                      ].map(({ label, key, icon }) => (
-                        <a key={key} href={result.google.services?.[key]} target="_blank" rel="noreferrer"
-                          className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors group"
-                          style={{ border:"1px solid var(--border)" }}>
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm">{icon}</span>
-                            <span className="text-xs font-medium truncate" style={{ color:"var(--text-primary)" }}>{label}</span>
-                          </div>
-                          <ExternalLink size={11} className="text-slate-400 group-hover:text-blue-500 flex-shrink-0"/>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs px-3 py-2 rounded-lg bg-slate-50" style={{ color:"var(--text-muted)" }}>
-                  {result.google?.reason || "No public Google account associated with this email."}
-                </p>
-              )}
-            </div>
-
-            {/* ── HIBP Breach Card ── */}
-            <div className="rounded-xl p-4 space-y-3" style={{ border:"1px solid #e2e8f0", background:"var(--bg-card)" }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded flex items-center justify-center text-white text-xs font-bold" style={{ background:"#d13c47" }}>!</div>
-                  <span className="text-sm font-semibold" style={{ color:"var(--text-primary)" }}>Have I Been Pwned</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold" style={{ color: riskColor(result.hibp?.found || 0) }}>
-                    {result.hibp?.found || 0} breach{result.hibp?.found !== 1 ? "es" : ""}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: riskColor(result.hibp?.found || 0) + "18", color: riskColor(result.hibp?.found || 0), border:`1px solid ${riskColor(result.hibp?.found || 0)}40` }}>
-                    {riskLabel(result.hibp?.found || 0)}
-                  </span>
-                </div>
-              </div>
-
-              {result.hibp?.source === "HIBP Public List (no API key)" && (
-                <div className="text-xs px-3 py-2 rounded-lg bg-amber-50 text-amber-700 flex items-center gap-2">
-                  <AlertTriangle size={11}/>
-                  Domain-level results only — add <code className="font-mono bg-amber-100 px-1 rounded">HIBP_API_KEY</code> for per-email breach data
-                </div>
-              )}
-
-              {result.hibp?.breaches?.length > 0 ? (
-                <div className="space-y-2">
-                  {result.hibp.breaches.map((b, i) => (
-                    <div key={i} className="rounded-lg px-3 py-2.5" style={{ border:"1px solid var(--border)", background:"var(--bg-input)" }}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold" style={{ color:"var(--text-primary)" }}>{b.name}</div>
-                          {b.domain && <div className="text-xs font-mono" style={{ color:"var(--text-muted)" }}>{b.domain}</div>}
-                        </div>
-                        <div className="flex-shrink-0 text-right">
-                          {b.date && <div className="text-xs tabular-nums" style={{ color:"var(--text-muted)" }}>{b.date}</div>}
-                          {b.pwnCount && <div className="text-xs tabular-nums text-red-500">{(b.pwnCount/1e6).toFixed(1)}M records</div>}
-                        </div>
-                      </div>
-                      {b.dataClasses?.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {b.dataClasses.map(dc => (
-                            <span key={dc} className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 ring-1 ring-red-100">{dc}</span>
-                          ))}
-                        </div>
-                      )}
-                      {b.note && <p className="text-xs mt-1 italic" style={{ color:"var(--text-muted)" }}>{b.note}</p>}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50">
-                  <CheckCircle2 size={13} className="text-green-500"/>
-                  <span className="text-xs text-green-700">No breaches found for this domain</span>
-                </div>
-              )}
-
-              {/* Manual check links */}
-              <div className="grid grid-cols-2 gap-1.5 pt-1">
-                {[
-                  { label:"Have I Been Pwned", url:`https://haveibeenpwned.com/account/${encodeURIComponent(query)}` },
-                  { label:"Intelligence X", url:`https://intelx.io/?s=${encodeURIComponent(query)}` },
-                  { label:"LeakCheck", url:`https://leakcheck.io/search?query=${encodeURIComponent(query)}` },
-                  { label:"DeHashed", url:`https://dehashed.com/search?query=${encodeURIComponent(query)}` },
-                ].map(({ label, url }) => (
-                  <a key={label} href={url} target="_blank" rel="noreferrer"
-                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-blue-50 transition-colors group text-xs"
-                    style={{ border:"1px solid var(--border)" }}>
-                    <span style={{ color:"var(--text-primary)" }}>{label}</span>
-                    <ExternalLink size={9} className="text-slate-400 group-hover:text-blue-500"/>
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Service Enumeration Card ── */}
-            {result.services?.length > 0 && (
-              <div className="rounded-xl p-4 space-y-3" style={{ border:"1px solid #e2e8f0", background:"var(--bg-card)" }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold" style={{ color:"var(--text-primary)" }}>Service Registration</span>
-                  <span className="text-xs" style={{ color:"var(--text-muted)" }}>
-                    {result.services.filter(s => s.status === "registered").length} registered
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {result.services.map(svc => (
-                    <div key={svc.name}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                      style={{ border:"1px solid var(--border)", background:svc.status==="registered"?"var(--bg-card)":"var(--bg-input)" }}>
-                      <ServiceIcon name={svc.name}/>
-                      <span className="text-xs flex-1 truncate" style={{ color:"var(--text-primary)" }}>{svc.name}</span>
-                      {svc.status === "registered"
-                        ? <CheckCircle2 size={12} className="text-green-500 flex-shrink-0"/>
-                        : <Circle size={12} className="text-slate-300 flex-shrink-0"/>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Quick OSINT links ── */}
-            <div className="rounded-xl p-4 space-y-2" style={{ border:"1px solid #e2e8f0", background:"var(--bg-card)" }}>
-              <span className="text-xs font-semibold" style={{ color:"var(--text-primary)" }}>Quick Investigation Links</span>
-              <div className="grid grid-cols-2 gap-1.5 mt-1.5">
-                {[
-                  { label:"Epieos", url:`https://epieos.com/?q=${encodeURIComponent(query)}&t=email` },
-                  { label:"Holehe Check", url:`https://github.com/megadose/holehe` },
-                  { label:"Google Search", url:`https://www.google.com/search?q=%22${encodeURIComponent(query)}%22` },
-                  { label:"Pastebin Search", url:`https://psbdmp.ws/api/v3/search/${encodeURIComponent(query)}` },
-                  { label:"Hunter.io", url:`https://hunter.io/email-verifier/${encodeURIComponent(query)}` },
-                  { label:"EmailRep.io", url:`https://emailrep.io/${encodeURIComponent(query)}` },
-                ].map(({ label, url }) => (
-                  <a key={label} href={url} target="_blank" rel="noreferrer"
-                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-blue-50 transition-colors group text-xs"
-                    style={{ border:"1px solid var(--border)" }}>
-                    <span style={{ color:"var(--text-primary)" }}>{label}</span>
-                    <ExternalLink size={9} className="text-slate-400 group-hover:text-blue-500"/>
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-xs text-center" style={{ color:"var(--text-muted)" }}>
-              Scanned {new Date(result.scannedAt).toLocaleTimeString()} · Public APIs only · No private data
-            </p>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!result && !loading && !error && (
-          <div className="rounded-xl p-5 text-center" style={{ border:"1px dashed var(--border)" }}>
-            <Mail size={20} className="mx-auto mb-2 text-slate-300"/>
-            <p className="text-xs" style={{ color:"var(--text-muted)" }}>
-              Enter an email address to look up the associated Google account, breach exposure, and service registrations.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // ── Vehicle RC / DL Verification Page ──
@@ -2376,100 +1730,6 @@ function AIAnalysisPage({ setActivePage, investigation }) {
         })()}
       </div>
     </div>
-    {/* ── Instagram Posts Analysis ── */}
-    {(()=>{
-      const posts = investigation.instaPosts || [];
-      if (!posts.length) return null;
-      const totalLikes    = posts.reduce((s,p)=>s+(p.likesCount||p.likes||0),0);
-      const totalComments = posts.reduce((s,p)=>s+(p.commentsCount||p.commentsNumber||p.commentCount||0),0);
-      const avgLikes      = posts.length ? Math.round(totalLikes/posts.length) : 0;
-      const avgComments   = posts.length ? Math.round(totalComments/posts.length) : 0;
-      const allHashtags   = posts.flatMap(p=>p.hashtags||[]);
-      const hashFreq      = allHashtags.reduce((m,h)=>{ m[h]=(m[h]||0)+1; return m; },{});
-      const topHashtags   = Object.entries(hashFreq).sort((a,b)=>b[1]-a[1]).slice(0,10);
-      const videoCount    = posts.filter(p=>p.isVideo||p.type==="Video").length;
-      const withLocation  = posts.filter(p=>p.locationName).length;
-      const engagementRate = posts.length && (investigation.findings||[]).find(f=>f.platform==="Instagram")
-        ? null : null; // would need follower count
-      return (
-        <div className="rounded-xl shadow-sm" style={V.card}>
-          <div className="flex items-center justify-between px-5 py-4" style={V.inner}>
-            <div className="flex items-center gap-2">
-              <span className="text-base">📸</span>
-              <h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Instagram Posts Analysis</h3>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 font-medium">{posts.length} posts scraped</span>
-            </div>
-          </div>
-          <div className="p-5 space-y-5">
-            {/* Stats row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label:"Total Posts",    value:posts.length,   color:"#e11d48", icon:"📸" },
-                { label:"Avg Likes",      value:avgLikes.toLocaleString(), color:"#f97316", icon:"❤️" },
-                { label:"Avg Comments",   value:avgComments.toLocaleString(), color:"#2563eb", icon:"💬" },
-                { label:"Video Posts",    value:videoCount,     color:"#7c3aed", icon:"▶️" },
-              ].map(({label,value,color,icon})=>(
-                <div key={label} className="rounded-xl p-3 text-center" style={{ background:"var(--bg-input)", border:"1px solid var(--border)" }}>
-                  <div style={{ fontSize:18 }}>{icon}</div>
-                  <div className="text-lg font-bold mt-1" style={{ color, fontFamily:"monospace" }}>{value}</div>
-                  <div className="text-xs mt-0.5" style={{ color:"var(--text-muted)" }}>{label}</div>
-                </div>
-              ))}
-            </div>
-            {/* Captions & content */}
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color:"var(--text-muted)" }}>Post Captions &amp; Content</h4>
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {posts.filter(p=>p.caption).slice(0,10).map((p,i)=>(
-                  <div key={i} className="rounded-lg p-3 text-xs" style={{ background:"var(--bg-input)", border:"1px solid var(--border)" }}>
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <span className="font-medium" style={{ color:"var(--text-sec)", lineHeight:1.5 }}>{p.caption.slice(0,180)}{p.caption.length>180?"…":""}</span>
-                      <div className="flex-shrink-0 text-right" style={{ color:"var(--text-muted)", fontSize:10 }}>
-                        {p.likesCount!=null && <div>❤️ {Number(p.likesCount).toLocaleString()}</div>}
-                        {p.commentsCount!=null && <div>💬 {Number(p.commentsCount).toLocaleString()}</div>}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {(p.hashtags||[]).slice(0,5).map(h=>(
-                        <span key={h} className="text-pink-500 font-medium" style={{ fontSize:9 }}>#{h}</span>
-                      ))}
-                      {p.locationName && <span className="text-blue-500" style={{ fontSize:9 }}>📍 {p.locationName}</span>}
-                      {p.timestamp && <span style={{ color:"var(--text-muted)", fontSize:9 }}>{new Date(p.timestamp).toLocaleDateString()}</span>}
-                    </div>
-                  </div>
-                ))}
-                {posts.filter(p=>p.caption).length===0 && (
-                  <div className="text-xs text-center py-4" style={{ color:"var(--text-muted)" }}>No captions found in scraped posts.</div>
-                )}
-              </div>
-            </div>
-            {/* Top hashtags */}
-            {topHashtags.length>0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color:"var(--text-muted)" }}>Top Hashtags Used</h4>
-                <div className="flex flex-wrap gap-2">
-                  {topHashtags.map(([tag,count])=>(
-                    <span key={tag} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                      style={{ background:"var(--bg-input)", border:"1px solid var(--border)", color:"var(--text-sec)" }}>
-                      <span className="text-pink-500">#{tag}</span>
-                      <span className="text-xs px-1 rounded-full bg-pink-100 text-pink-600" style={{ fontSize:9 }}>{count}×</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Location intel */}
-            {withLocation>0 && (
-              <div className="rounded-lg p-3 text-xs" style={{ background:"rgba(239,246,255,0.8)", border:"1px solid rgba(191,219,254,0.6)" }}>
-                <span className="font-semibold text-blue-700">📍 Location Intelligence: </span>
-                <span className="text-blue-600">{withLocation} of {posts.length} posts have location data — </span>
-                <span className="text-blue-500">{[...new Set(posts.filter(p=>p.locationName).map(p=>p.locationName))].slice(0,4).join(", ")}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    })()}
     <button onClick={()=>setActivePage("graph")} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"><Network size={15}/>View Relationship Graph<ChevronRight size={14}/></button>
   </div>;
 }
@@ -2698,97 +1958,14 @@ function ContentAnalysisPage({ setActivePage, investigation }) {
 }
 
 function ReportPage({ investigation }) {
-  const [downloaded, setDownloaded] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
+  const [printed, setPrinted] = useState(false);
   const circumference = 2*Math.PI*36;
 
-  // ── Build HTML report string (shared by PDF download + share) ──────────────
-  const buildReportHTML = () => {
-    const inv = investigation;
-    const stats = inv.stats || {};
-    const findings = inv.findings || [];
-    const confirmed = findings.filter(f => f.status === "found");
-    const candidates = findings.filter(f => f.status === "open_link");
-    const riskScore = { critical:92, high:70, medium:48, low:20 }[inv.risk] ?? (stats.confidence||0);
-    const riskLabel = (inv.risk || "low").toUpperCase();
-    const riskColor = { critical:"#dc2626", high:"#f97316", medium:"#d97706", low:"#16a34a" }[inv.risk] || "#64748b";
-    const startedDate = inv.startedAt ? new Date(inv.startedAt).toLocaleString() : "Unknown";
-    const generatedAt = new Date().toLocaleString();
-    const findingRows = findings.map((f, i) => `<tr><td>EV-${String(i+1).padStart(3,"0")}</td><td>${f.platform||"Unknown"}</td><td>${f.title||f.platform||"—"}</td><td style="color:${f.status==="found"?"#16a34a":f.status==="blocked"?"#dc2626":"#d97706"}">${f.status}</td><td>${f.url||"—"}</td></tr>`).join("");
-    const metaRows = (inv.metadata||[]).map(m=>`<tr><td>${m.key||""}</td><td>${m.value||""}</td></tr>`).join("");
-    const logRows = (inv.logs||[]).map(l=>`<tr><td style="font-family:monospace">${l.time}</td><td style="color:${l.level==="success"?"#16a34a":l.level==="warn"?"#f97316":"#2563eb"};font-weight:600">${l.level.toUpperCase()}</td><td>${l.msg}</td></tr>`).join("") || "<tr><td colspan='3'>No logs.</td></tr>";
-    const geminiSummary = (inv.gemini?.summary || "Gemini analysis not available.").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>OSINT Report — ${inv.id}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:#fff;padding:32px}h1{font-size:20px;font-weight:700;color:#1e3a5f;margin-bottom:2px}h2{font-size:13px;font-weight:700;color:#1e3a5f;margin:18px 0 8px;border-bottom:1.5px solid #e2e8f0;padding-bottom:4px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #1e3a5f}.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1px solid;margin-right:6px}.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.stat-box{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;text-align:center;background:#f8fafc}.stat-val{font-size:18px;font-weight:800;font-family:monospace;color:#1e3a5f}.stat-label{font-size:9px;color:#64748b;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:10px}th{background:#1e3a5f;color:#fff;padding:6px 8px;text-align:left;font-weight:600;font-size:9.5px}td{padding:5px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}tr:nth-child(even) td{background:#f8fafc}.risk-box{border:1.5px solid ${riskColor};border-radius:8px;padding:10px 14px;margin:10px 0;background:${riskColor}18}.ai-box{background:#f0f4ff;border:1px solid #c7d7fa;border-radius:8px;padding:12px;font-size:10.5px;line-height:1.7;color:#1e40af;white-space:pre-wrap;word-break:break-word}.footer{margin-top:28px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}@media print{body{padding:18px}.no-print{display:none!important}}</style></head><body><div class="header"><div><div style="font-size:10px;color:#2563eb;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">🔒 OSINT Intelligence Report — CONFIDENTIAL</div><h1>Case ${inv.id}</h1><div style="font-size:10px;color:#64748b;margin-top:2px;font-family:monospace">Target: ${inv.target} | Type: ${inv.type} | Started: ${startedDate}</div></div><div style="text-align:right"><div style="font-size:9px;color:#94a3b8">Generated by Oxinap</div><div style="font-size:9px;color:#94a3b8">${generatedAt}</div><div style="margin-top:6px"><span class="badge" style="color:${riskColor};border-color:${riskColor}80;background:${riskColor}12">⚠ ${riskLabel} RISK</span><span class="badge" style="color:#2563eb;border-color:#93c5fd;background:#eff6ff">${stats.confidence||0}% Confidence</span></div></div></div><div class="stats-grid"><div class="stat-box"><div class="stat-val">${confirmed.length}</div><div class="stat-label">Confirmed Accounts</div></div><div class="stat-box"><div class="stat-val">${candidates.length}</div><div class="stat-label">Candidate Links</div></div><div class="stat-box"><div class="stat-val">${inv.platforms?.length||0}</div><div class="stat-label">Platforms Found</div></div><div class="stat-box"><div class="stat-val">${stats.sources||0}</div><div class="stat-label">Sources Crawled</div></div></div><div class="risk-box"><div style="font-size:13px;font-weight:800;color:${riskColor}">${riskLabel} THREAT — Risk Score: ${riskScore}/100</div><div style="margin-top:4px;font-size:10px;color:#475569">${confirmed.length} confirmed account(s) across ${inv.platforms?.length||0} platform(s). ${candidates.length} candidate link(s) remain unverified.</div></div><h2>Executive Summary</h2><p style="line-height:1.7;color:#334155">Public-source OSINT investigation <strong>${inv.id}</strong> was conducted against target <strong>${inv.target}</strong> (${inv.type}). The pipeline identified ${confirmed.length} confirmed account(s) and ${candidates.length} candidate link(s) across ${inv.platforms?.length||0} platform(s) at ${stats.confidence||0}% confidence.</p><h2>AI / Gemini Analysis</h2><div class="ai-box">${geminiSummary}</div><h2>Evidence Registry (${findings.length} items)</h2><table><thead><tr><th>ID</th><th>Platform</th><th>Description</th><th>Status</th><th>URL</th></tr></thead><tbody>${findingRows||"<tr><td colspan='5' style='text-align:center;color:#94a3b8'>No evidence items.</td></tr>"}</tbody></table><h2>Collection Metadata</h2><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${metaRows}</tbody></table><h2>Activity Log</h2><table><thead><tr><th>Time</th><th>Level</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table><div class="footer"><div>OXINAP — Automated OSINT Platform | For authorised law enforcement use only</div><div style="font-family:monospace">CASE: ${inv.id} | RESTRICTED | ${generatedAt}</div></div></body></html>`;
+  const handlePrint = () => {
+    window.print();
+    setPrinted(true);
+    setTimeout(() => setPrinted(false), 2500);
   };
-
-  // ── PDF: generate Blob → <a download> → direct file download ───────────────
-  const handleDownloadPDF = () => {
-    const html = buildReportHTML();
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `Oxinap-Report-${investigation.id}-${investigation.target}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 3000);
-  };
-
-  // ── Share text ──────────────────────────────────────────────────────────────
-  const shareText = investigation
-    ? `🔒 OSINT Report — Case ${investigation.id}\n👤 Target: ${investigation.target}\n⚠️ Risk: ${(investigation.risk||"").toUpperCase()}\n📊 Confidence: ${investigation.stats?.confidence||0}%\n🌐 Platforms: ${(investigation.platforms||[]).join(", ")}\n\nGenerated by Oxinap SOCMINT Platform`
-    : "";
-
-  // ── Share modal open ────────────────────────────────────────────────────────
-  const handleShare = () => setShareOpen(true);
-
-  // ── Copy to clipboard ───────────────────────────────────────────────────────
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(shareText);
-    } catch {
-      const el = document.createElement("textarea");
-      el.value = shareText;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
-    }
-    setShareCopied(true);
-    setTimeout(() => setShareCopied(false), 2500);
-  };
-
-  // ── Direct app share links ──────────────────────────────────────────────────
-  const shareApps = investigation ? [
-    {
-      label: "WhatsApp",
-      color: "#25D366",
-      icon: "💬",
-      url: `https://wa.me/?text=${encodeURIComponent(shareText)}`,
-    },
-    {
-      label: "Telegram",
-      color: "#229ED9",
-      icon: "✈️",
-      url: `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(shareText)}`,
-    },
-    {
-      label: "Email",
-      color: "#EA4335",
-      icon: "📧",
-      url: `mailto:?subject=${encodeURIComponent("OSINT Report — Case " + investigation.id)}&body=${encodeURIComponent(shareText)}`,
-    },
-    {
-      label: "Twitter/X",
-      color: "#000000",
-      icon: "𝕏",
-      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText.slice(0,240))}`,
-    },
-  ] : [];
 
   if (!investigation) {
     return <div className="p-6">
@@ -2823,49 +2000,8 @@ function ReportPage({ investigation }) {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div><div className="flex items-center gap-2 mb-1"><Shield size={16} className="text-blue-600"/><span className="text-blue-600 text-xs font-semibold uppercase tracking-wider">OSINT Investigation Report</span></div><h2 className="font-bold text-xl mb-1" style={{ color:"var(--text-primary)" }}>Case {investigation.id}</h2><p className="text-slate-500 text-sm">Target: <span className="font-medium text-slate-700" style={{ fontFamily:"monospace" }}>{investigation.target}</span>{startedDate && <> · Opened {startedDate.toLocaleDateString()}</>}</p></div>
           <div className="flex items-center gap-2.5 flex-shrink-0">
-            <button onClick={handleDownloadPDF} className={cn("flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all", downloaded?"bg-green-600 text-white":"bg-blue-600 hover:bg-blue-700 text-white")}>{downloaded?<CheckCircle2 size={14}/>:<Download size={14}/>}{downloaded?"Opening PDF…":"Download PDF"}</button>
-            <button onClick={handleShare} className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"><Share2 size={14}/>Share Report</button>
-            {shareOpen && (
-              <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setShareOpen(false)}>
-                <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:18, padding:24, width:380, maxWidth:"92vw", boxShadow:"0 24px 64px rgba(0,0,0,0.25)" }} onClick={e=>e.stopPropagation()}>
-                  {/* Header */}
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <Share2 size={16} className="text-blue-600"/>
-                      <span style={{ fontWeight:700, fontSize:15, color:"var(--text-primary)" }}>Share Report</span>
-                    </div>
-                    <button onClick={()=>setShareOpen(false)} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
-                  </div>
-
-                  {/* Preview */}
-                  <div style={{ background:"var(--bg-input)", border:"1px solid var(--border)", borderRadius:10, padding:10, marginBottom:16, fontSize:11, color:"var(--text-sec)", fontFamily:"monospace", whiteSpace:"pre-wrap", maxHeight:100, overflowY:"auto", lineHeight:1.6 }}>{shareText}</div>
-
-                  {/* App share buttons */}
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
-                    {shareApps.map(app => (
-                      <a key={app.label} href={app.url} target="_blank" rel="noopener noreferrer"
-                        style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", borderRadius:10, background:app.color, color:"#fff", textDecoration:"none", fontWeight:600, fontSize:13, transition:"opacity 0.15s" }}
-                        onMouseEnter={e=>e.currentTarget.style.opacity="0.88"}
-                        onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
-                        <span style={{ fontSize:18, lineHeight:1 }}>{app.icon}</span>
-                        {app.label}
-                      </a>
-                    ))}
-                  </div>
-
-                  {/* Copy + Download row */}
-                  <div style={{ display:"flex", gap:8 }}>
-                    <button onClick={handleCopyLink} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"10px 14px", borderRadius:10, background: shareCopied?"#16a34a":"var(--bg-input)", color: shareCopied?"#fff":"var(--text-primary)", border:"1px solid var(--border)", cursor:"pointer", fontWeight:600, fontSize:12, transition:"all 0.2s" }}>
-                      {shareCopied ? <CheckCircle2 size={13}/> : <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>}
-                      {shareCopied ? "Copied!" : "Copy Text"}
-                    </button>
-                    <button onClick={()=>{ setShareOpen(false); handleDownloadPDF(); }} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:7, padding:"10px 14px", borderRadius:10, background:"var(--bg-input)", color:"var(--text-primary)", border:"1px solid var(--border)", cursor:"pointer", fontWeight:600, fontSize:12 }}>
-                      <Download size={13}/>Download
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            <button onClick={handlePrint} className={cn("flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all", printed?"bg-green-600 text-white":"bg-blue-600 hover:bg-blue-700 text-white")}>{printed?<CheckCircle2 size={14}/>:<Download size={14}/>}{printed?"Sent to Print!":"Print / Save PDF"}</button>
+            <button className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"><Share2 size={14}/>Share Report</button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-4 pt-4" style={{ borderTop:"1px solid var(--border-inner)" }}>
@@ -2925,31 +2061,6 @@ function ReportPage({ investigation }) {
           <h3 className="text-slate-700 font-semibold text-sm mb-3">Platforms Identified</h3>
           <div className="space-y-2">{platformList.length ? platformList.map(p=><div key={p.name} className="flex items-center gap-2"><PlatformPill abbr={p.name.slice(0,2).toUpperCase()} color="#2563eb"/><span className="text-slate-600 text-xs flex-1">{p.name}</span><span className="text-slate-400 text-xs tabular-nums" style={{ fontFamily:"monospace" }}>{p.count} item{p.count>1?"s":""}</span></div>) : <div className="text-center text-slate-400 text-xs py-2">No platforms identified yet.</div>}</div>
         </div>
-        {/* Instagram Posts in Report */}
-        {(investigation.instaPosts||[]).length>0 && (
-          <div className="rounded-xl shadow-sm" style={V.card}>
-            <div className="px-5 py-3" style={V.inner}>
-              <h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>📸 Instagram Posts Evidence</h3>
-              <p className="text-xs mt-0.5" style={{ color:"var(--text-muted)" }}>{(investigation.instaPosts||[]).length} posts collected via Apify scraper</p>
-            </div>
-            <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
-              {(investigation.instaPosts||[]).filter(p=>p.caption).slice(0,8).map((p,i)=>(
-                <div key={i} className="flex gap-3 p-2.5 rounded-lg text-xs" style={{ background:"var(--bg-input)", border:"1px solid var(--border)" }}>
-                  <span className="text-slate-400 font-mono flex-shrink-0 mt-0.5">P{String(i+1).padStart(2,"0")}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="leading-relaxed" style={{ color:"var(--text-sec)" }}>{p.caption.slice(0,200)}{p.caption.length>200?"…":""}</p>
-                    <div className="flex gap-3 mt-1.5 flex-wrap" style={{ color:"var(--text-muted)", fontSize:10 }}>
-                      {p.likesCount!=null && <span>❤️ {Number(p.likesCount).toLocaleString()}</span>}
-                      {(p.commentsCount??p.commentsNumber)!=null && <span>💬 {Number(p.commentsCount??p.commentsNumber).toLocaleString()}</span>}
-                      {p.locationName && <span>📍 {p.locationName}</span>}
-                      {p.timestamp && <span>{new Date(p.timestamp).toLocaleDateString()}</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
         <div className="rounded-xl p-4 shadow-sm" style={{ background:"rgba(239,246,255,1)", border:"1px solid rgba(191,219,254,1)" }}>
           <div className="flex items-center gap-2 mb-2"><CheckCircle2 size={14} className="text-blue-600"/><span className="text-blue-700 font-semibold text-xs">Investigation Conclusion</span></div>
           <p className="text-blue-600 leading-relaxed" style={{ fontSize:11 }}>{confirmed.length ? `${confirmed.length} account(s) confirmed across public sources with ${stats.confidence||0}% confidence.` : "No accounts confirmed yet — re-run the search or refine the target to improve coverage."} {candidates.length ? `${candidates.length} additional candidate link(s) remain unverified.` : ""}</p>
@@ -3162,233 +2273,6 @@ function AccessControlPage({ setActivePage, investigation, user, onSelectInvesti
   </div>;
 }
 
-// ── Settings Page ──
-function SettingsPage({ user, investigation, recentItems, recentLoaded, dark, setDark, onLogout }) {
-  const displayName   = user?.fullName || user?.displayName || user?.email?.split("@")[0] || "Operative";
-  const designation   = user?.designation || user?.role || "Analyst";
-  const department    = user?.department || "";
-  const badgeID       = user?.badgeID || "";
-  const kgid          = user?.kgid || "";
-  const cjsid         = user?.cjsid || "";
-  const stationCode   = user?.stationCode || "";
-  const postingDistrict = user?.postingDistrict || "";
-  const dateOfJoining = user?.dateOfJoining || "";
-  const jurisdiction  = user?.jurisdiction || "";
-  const initials      = displayName.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2) || "OP";
-  const isVerified    = !!user?.verified;
-  const accountStatus = (user?.status || "active").toLowerCase();
-
-  // ── Derive authority-to-testify from designation ──
-  const seniorRoles   = ["senior_analyst","team_lead","investigator","admin","SP","DSP","CI","SI","PSI","ACP","DCP","commissioner"];
-  const canTestify    = seniorRoles.some(r => (designation||"").toLowerCase().includes(r.toLowerCase())) || isVerified;
-  const authorityLabel = canTestify ? "Authorised to Submit Evidence" : "Pending Authorisation";
-
-  const liveItems       = recentLoaded ? recentItems.map(normalizeRecentInvestigation) : [];
-  const totalCases      = liveItems.length;
-  const highRiskCases   = liveItems.filter(i => ["critical","high"].includes((i.risk||"").toLowerCase())).length;
-  const platformsScanned = new Set(liveItems.flatMap(i => i.platforms || [])).size;
-
-  const profileFields = [
-    { label:"Email",            value: user?.email || "Not set",      icon:Mail     },
-    { label:"Phone",            value: user?.phone || "Not set",      icon:Phone    },
-    { label:"Badge / Emp. ID",  value: badgeID || "Not assigned",     icon:FileText },
-    { label:"Department / Unit",value: department || "Not set",       icon:Flag     },
-    { label:"KGID",             value: kgid || "Not assigned",        icon:CreditCard },
-    { label:"CJSID",            value: cjsid || "Not assigned",       icon:Key      },
-  ];
-
-  const officialFields = [
-    { label:"Station / Unit Code",   value: stationCode || "Not set",      icon:Building  },
-    { label:"Posting District",      value: postingDistrict || "Not set",  icon:MapPin    },
-    { label:"Jurisdiction",          value: jurisdiction || "Not set",     icon:Globe     },
-    { label:"Date of Joining",       value: dateOfJoining || "Not set",    icon:Calendar  },
-  ];
-
-  const statCards = [
-    { label:"Total Cases Investigated", value: recentLoaded ? String(totalCases) : "—",   icon:Target,        color:"blue"  },
-    { label:"Active Case",              value: investigation?.id || "None",                icon:Activity,      color: investigation ? "green" : "slate" },
-    { label:"High Risk Cases Handled",  value: recentLoaded ? String(highRiskCases) : "—", icon:AlertTriangle, color:"red"   },
-    { label:"Platforms Scanned",        value: recentLoaded ? String(platformsScanned) : "—", icon:Globe,      color:"cyan"  },
-  ];
-
-  const colorMap = {
-    blue:  { bg:"bg-blue-50",   icon:"text-blue-600",   ring:"ring-blue-100"   },
-    green: { bg:"bg-green-50",  icon:"text-green-600",  ring:"ring-green-100"  },
-    red:   { bg:"bg-red-50",    icon:"text-red-600",    ring:"ring-red-100"    },
-    cyan:  { bg:"bg-cyan-50",   icon:"text-cyan-600",   ring:"ring-cyan-100"   },
-    slate: { bg:"bg-slate-100", icon:"text-slate-500",  ring:"ring-slate-200"  },
-  };
-
-  // ── Court credential badge helper ──
-  function CourtBadge({ ok, label }) {
-    return (
-      <span className={cn("inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ring-1",
-        ok ? "bg-green-50 text-green-700 ring-green-200" : "bg-amber-50 text-amber-700 ring-amber-200")}>
-        {ok ? <CheckCircle2 size={11}/> : <AlertCircle size={11}/>}
-        {label}
-      </span>
-    );
-  }
-
-  return <div className="p-4 md:p-6 space-y-5">
-
-    {/* ── Official header banner ── */}
-    <div className="rounded-xl px-5 py-3 flex items-center gap-3" style={{ background:"linear-gradient(135deg,rgba(30,58,138,0.92),rgba(30,27,75,0.95))", border:"1px solid rgba(99,102,241,0.3)" }}>
-      <div style={{ flexShrink:0, width:38, height:38, borderRadius:8, background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", border:"1px solid rgba(255,255,255,0.15)" }}>
-        <Shield size={18} style={{ color:"#93c5fd" }}/>
-      </div>
-      <div className="min-w-0">
-        <div className="font-bold text-sm" style={{ color:"#e0e7ff", letterSpacing:"0.02em" }}>CYBER INVESTIGATION DEPARTMENT — KARNATAKA</div>
-        <div className="text-xs mt-0.5" style={{ color:"#93c5fd" }}>Government of Karnataka · Department of Electronics, IT, BT &amp; S&amp;T · Official Operator Profile</div>
-      </div>
-    </div>
-
-    {/* ── Profile card ── */}
-    <div className="rounded-xl p-5 md:p-6 shadow-sm" style={V.card}>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        {user?.photoURL
-          ? <img src={user.photoURL} referrerPolicy="no-referrer" alt={displayName} className="w-16 h-16 rounded-full object-cover flex-shrink-0" style={{ border:"2px solid rgba(99,102,241,0.4)" }}/>
-          : <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ background:"linear-gradient(135deg,#3b82f6,#4f46e5)" }}><span className="text-white font-bold text-lg">{initials}</span></div>
-        }
-        <div className="min-w-0 flex-1">
-          <h2 className="font-bold text-lg leading-tight" style={{ color:"var(--text-primary)" }}>{displayName}</h2>
-          <p className="text-slate-500 text-sm mt-0.5">{designation}{department ? ` · ${department}` : ""}</p>
-          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ring-1", accountStatus==="active" ? "bg-green-50 text-green-700 ring-green-200" : "bg-slate-100 text-slate-600 ring-slate-200")}>
-              <span className={cn("w-1.5 h-1.5 rounded-full", accountStatus==="active"?"bg-green-500":"bg-slate-400")}/>
-              {accountStatus==="active" ? "Active" : "Inactive"}
-            </span>
-            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ring-1", isVerified ? "bg-blue-50 text-blue-700 ring-blue-200" : "bg-amber-50 text-amber-700 ring-amber-200")}>
-              {isVerified ? <CheckCircle2 size={11}/> : <AlertCircle size={11}/>}
-              {isVerified ? "Verified" : "Pending Verification"}
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ring-1 bg-indigo-50 text-indigo-700 ring-indigo-200">
-              <Award size={11}/>
-              {designation || "Operative"}
-            </span>
-          </div>
-        </div>
-      </div>
-      {/* Profile fields: 2-col on mobile, 3-col on md */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-5 pt-5" style={{ borderTop:"1px solid var(--border-inner)" }}>
-        {profileFields.map(f => <FieldCell key={f.label} icon={f.icon} label={f.label} value={f.value}/>)}
-      </div>
-    </div>
-
-    {/* ── Official Posting Details ── */}
-    <div className="rounded-xl p-5 shadow-sm" style={V.card}>
-      <div className="flex items-center gap-2 mb-4">
-        <Building size={14} style={{ color:"var(--text-muted)" }}/>
-        <h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Official Posting Details</h3>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {officialFields.map(f => <FieldCell key={f.label} icon={f.icon} label={f.label} value={f.value}/>)}
-      </div>
-    </div>
-
-    {/* ── Court Credentials ── */}
-    <div className="rounded-xl p-5 shadow-sm" style={{ ...V.card, borderLeft:"3px solid #4f46e5" }}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <BookOpen size={14} style={{ color:"#4f46e5" }}/>
-          <h3 className="font-semibold text-sm" style={{ color:"var(--text-primary)" }}>Court Credentials &amp; Authority</h3>
-        </div>
-        <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ background:"rgba(79,70,229,0.1)", color:"#4f46e5", border:"1px solid rgba(79,70,229,0.2)" }}>CID KARNATAKA</span>
-      </div>
-
-      {/* KGID + CJSID highlight row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-        <div className="rounded-lg px-4 py-3" style={{ background:"rgba(79,70,229,0.06)", border:"1px solid rgba(79,70,229,0.18)" }}>
-          <div className="flex items-center gap-1.5 mb-1">
-            <CreditCard size={11} style={{ color:"#4f46e5" }}/>
-            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color:"#4f46e5" }}>KGID</span>
-            <span className="text-xs ml-1" style={{ color:"var(--text-muted)" }}>Karnataka Govt. ID</span>
-          </div>
-          <div className="font-bold text-sm" style={{ fontFamily:"monospace", color: kgid ? "var(--text-primary)" : "#94a3b8", fontStyle: kgid ? "normal" : "italic" }}>
-            {kgid || "Not assigned"}
-          </div>
-        </div>
-        <div className="rounded-lg px-4 py-3" style={{ background:"rgba(79,70,229,0.06)", border:"1px solid rgba(79,70,229,0.18)" }}>
-          <div className="flex items-center gap-1.5 mb-1">
-            <Key size={11} style={{ color:"#4f46e5" }}/>
-            <span className="text-xs font-semibold uppercase tracking-widest" style={{ color:"#4f46e5" }}>CJSID</span>
-            <span className="text-xs ml-1" style={{ color:"var(--text-muted)" }}>Criminal Justice System ID</span>
-          </div>
-          <div className="font-bold text-sm" style={{ fontFamily:"monospace", color: cjsid ? "var(--text-primary)" : "#94a3b8", fontStyle: cjsid ? "normal" : "italic" }}>
-            {cjsid || "Not assigned"}
-          </div>
-        </div>
-      </div>
-
-      {/* Authority badges */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <CourtBadge ok={isVerified}   label={isVerified   ? "Identity Verified" : "Identity Pending"}/>
-        <CourtBadge ok={canTestify}   label={authorityLabel}/>
-        <CourtBadge ok={!!kgid}       label={kgid  ? "KGID Assigned" : "KGID Not Assigned"}/>
-        <CourtBadge ok={!!cjsid}      label={cjsid ? "CJSID Assigned" : "CJSID Not Assigned"}/>
-        <CourtBadge ok={accountStatus==="active"} label={accountStatus==="active" ? "Account Active" : "Account Inactive"}/>
-      </div>
-
-      {/* Disclaimer for court use */}
-      <div className="rounded-lg px-4 py-3 text-xs leading-relaxed" style={{ background:"rgba(15,23,42,0.04)", border:"1px solid var(--border-inner)", color:"var(--text-sec)" }}>
-        <span className="font-semibold" style={{ color:"var(--text-primary)" }}>📋 Court Submission Notice: </span>
-        This profile record is generated from the Oxinap Cyber Intelligence Platform operated by the Cyber Investigation Department, Government of Karnataka. The KGID and CJSID identifiers uniquely link this operator to the Karnataka Government HR registry and the Criminal Justice System database respectively. All investigation records and digital evidence generated under this profile carry operator traceability through these credentials and are admissible as official records under the Information Technology Act, 2000 and the Indian Evidence Act.
-      </div>
-    </div>
-
-    {/* ── Investigation stats ── */}
-    <div>
-      <h3 className="font-semibold text-sm mb-3 px-1" style={{ color:"var(--text-primary)" }}>Investigation Stats</h3>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map(({ label, value, icon:Ic, color }) => {
-          const c = colorMap[color];
-          return <div key={label} className="rounded-xl p-5 shadow-sm" style={V.card}>
-            <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center ring-1 mb-3", c.bg, c.ring)}><Ic size={16} className={c.icon}/></div>
-            <div className="text-lg font-bold mb-0.5 truncate" style={{ fontFamily:"monospace", color:"var(--text-primary)" }} title={value}>{value}</div>
-            <div className="text-xs font-medium" style={{ color:"var(--text-sec)" }}>{label}</div>
-          </div>;
-        })}
-      </div>
-    </div>
-
-    {/* ── Preferences ── */}
-    <div className="rounded-xl p-5 shadow-sm" style={V.card}>
-      <h3 className="font-semibold text-sm mb-1" style={{ color:"var(--text-primary)" }}>Preferences</h3>
-      <div className="flex items-center justify-between py-3" style={{ borderBottom:"1px solid var(--border-inner)" }}>
-        <div className="min-w-0 pr-3">
-          <div className="text-sm font-medium" style={{ color:"var(--text-primary)" }}>Theme</div>
-          <div className="text-slate-400 text-xs mt-0.5">Toggle between light and dark interface</div>
-        </div>
-        <button onClick={()=>setDark(!dark)} className="flex-shrink-0" title={dark?"Switch to light mode":"Switch to dark mode"} style={{ display:"flex",alignItems:"center",justifyContent:"center",width:34,height:34,borderRadius:8,cursor:"pointer",border:"1px solid var(--border)",background:"var(--bg-input)",color:"var(--text-sec)" }}>
-          {dark ? <Sun size={15}/> : <Moon size={15}/>}
-        </button>
-      </div>
-      <div className="flex items-center justify-between py-3">
-        <div className="min-w-0 pr-3">
-          <div className="text-sm font-medium" style={{ color:"var(--text-primary)" }}>Language</div>
-          <div className="text-slate-400 text-xs mt-0.5">Choose your interface language</div>
-        </div>
-        <div className="flex-shrink-0"><LanguageSwitcher/></div>
-      </div>
-    </div>
-
-    {/* ── Account ── */}
-    <div className="rounded-xl p-5 shadow-sm" style={V.card}>
-      <h3 className="font-semibold text-sm mb-1" style={{ color:"var(--text-primary)" }}>Account</h3>
-      <div className="flex items-center justify-between py-3">
-        <div className="min-w-0 pr-3">
-          <div className="text-sm font-medium" style={{ color:"var(--text-primary)" }}>Sign Out</div>
-          <div className="text-slate-400 text-xs mt-0.5">End your session on this device</div>
-        </div>
-        <button onClick={onLogout} className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors text-xs font-medium" style={{ border:"1px solid rgba(239,68,68,0.25)" }}>
-          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          Sign Out
-        </button>
-      </div>
-    </div>
-  </div>;
-}
-
 export default function App({ user }) {
 const handleLogout = async () => {
   try { await signOut(auth); } catch(e) { console.error("Logout error:", e); }
@@ -3410,14 +2294,8 @@ const handleLogout = async () => {
     setLastSavedId("");
     if (redirectToOsint) setActivePage("osint");
     try {
-      // Apify actors (Twitter, LinkedIn, Instagram, Facebook) each take 60-90s.
-      // 30s was firing before any actor finished — bumped to 4 minutes.
-      const INVESTIGATION_TIMEOUT_MS = 4 * 60 * 1000;
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Investigation is taking longer than expected. Partial results may be available — try again if needed.")),
-          INVESTIGATION_TIMEOUT_MS
-        )
+        setTimeout(() => reject(new Error("That's taking unusually long — please try again.")), 30000)
       );
       const result = await Promise.race([
         runPublicOsintInvestigation({ target, type }),
@@ -3435,10 +2313,7 @@ const handleLogout = async () => {
           // so the Dashboard updates immediately even if replication/Realtime
           // isn't enabled on the table.
           fetchRecentInvestigations(user)
-            .then((items) => {
-              setRecentInvestigationsFromStore(items);
-              setRecentInvestigationsLoaded(true);
-            })
+            .then(setRecentInvestigationsFromStore)
             .catch((e) => console.error("[CyIntel] Manual refresh after save failed:", e));
         })
         .catch((saveErr) => {
@@ -3503,15 +2378,15 @@ const handleLogout = async () => {
 
   const pages = {
     dashboard: <DashboardPage setActivePage={setActivePage} dark={dark} onStartInvestigation={handleStartInvestigation} onSelectInvestigation={handleSelectInvestigation} onDeleteInvestigation={handleDeleteInvestigation} investigation={investigation} investigationLoading={investigationLoading} investigationError={investigationError} recentItems={recentInvestigationsFromStore} recentError={recentInvestigationError} recentLoaded={recentInvestigationsLoaded} savingId={savingId} lastSavedId={lastSavedId} user={user}/>,
-    osint: <OSINTPage setActivePage={setActivePage} dark={dark} investigation={investigation} investigationLoading={investigationLoading} investigationError={investigationError} onStartInvestigation={handleStartInvestigation} onPatchInvestigation={(patch) => setInvestigation(prev => prev ? { ...prev, ...patch } : prev)}/>,
+    osint: <OSINTPage setActivePage={setActivePage} dark={dark} investigation={investigation} investigationLoading={investigationLoading} investigationError={investigationError} onStartInvestigation={handleStartInvestigation}/>,
     "ai-analysis": <AIAnalysisPage setActivePage={setActivePage} dark={dark} investigation={investigation}/>,
     vehicle: <VehicleRCPage />,
     graph: <GraphPage setActivePage={setActivePage} dark={dark} investigation={investigation}/>,
     content: <ContentAnalysisPage setActivePage={setActivePage} investigation={investigation}/>,
     "image-analysis": <ImageAnalysisPage/>,
+    "associate-network": <AssociateNetworkPage investigation={investigation} setActivePage={setActivePage}/>,
     access: <AccessControlPage setActivePage={setActivePage} investigation={investigation} user={user} onSelectInvestigation={handleSelectInvestigation}/>,
     report: <ReportPage dark={dark} investigation={investigation}/>,
-    settings: <SettingsPage user={user} investigation={investigation} recentItems={recentInvestigationsFromStore} recentLoaded={recentInvestigationsLoaded} dark={dark} setDark={setDark} onLogout={handleLogout}/>,
   };
 
   return (
@@ -3600,9 +2475,9 @@ const handleLogout = async () => {
           .card-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr !important; }
         }
       `}</style>
-      <Sidebar activePage={activePage} setActivePage={setActivePage} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} user={user} onLogout={handleLogout} investigation={investigation}/>
+      <Sidebar activePage={activePage} setActivePage={setActivePage} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} user={user} onLogout={handleLogout}/>
       <div style={{ display:"flex", flexDirection:"column", flex:1, minWidth:0, overflow:"hidden" }}>
-        <TopNav activePage={activePage} setActivePage={setActivePage} dark={dark} setDark={setDark} setSidebarOpen={setSidebarOpen} user={user} onLogout={handleLogout} investigation={investigation}/>
+        <TopNav activePage={activePage} setActivePage={setActivePage} dark={dark} setDark={setDark} setSidebarOpen={setSidebarOpen} user={user} onLogout={handleLogout}/>
         {investigationError && investigationError.includes("Supabase save failed") && (
           <div style={{ background:"#fef2f2", borderBottom:"1px solid #fecaca", padding:"8px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexShrink:0 }}>
             <span style={{ fontSize:12, color:"#b91c1c", fontWeight:500 }}>⚠️ {investigationError}</span>
