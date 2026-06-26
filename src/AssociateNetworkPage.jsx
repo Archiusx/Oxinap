@@ -72,15 +72,29 @@ function buildAssociates(investigation) {
   if (!investigation) return demoAssociates();
 
   const target = investigation.target || "Unknown";
-  const findings = investigation.findings || [];
-  const gemSources = investigation.gemini?.sources || [];
+  const findings    = investigation.findings || [];
+  const gemSources  = investigation.gemini?.sources || [];
+  // ── Newly-persisted card data (see osintTools/dashboard changes) ──
+  // crawledPages: full text of pages the crawler fetched — often contains
+  // @mentions/tags that never made it into a platform "finding".
+  // instaPosts: post captions/hashtags, which frequently @mention other
+  // accounts (collaborators, tagged friends, brand partners, etc).
+  const crawledPages = investigation.crawledPages || [];
+  const instaPosts    = investigation.instaPosts   || [];
 
-  // extract usernames / handles that appear across findings
+  // extract usernames / handles that appear across findings, sources,
+  // crawled page text, and Instagram post captions/hashtags
   const handleRe = /[@#]?([a-zA-Z0-9_.-]{3,32})/g;
   const freq = {};
   const snippetMap = {};
 
-  [...findings, ...gemSources].forEach(f => {
+  const postTextSources = instaPosts.map((p) => ({
+    title:    "Instagram post",
+    snippet:  [p.caption, (p.hashtags || []).map((h) => "#" + h).join(" ")].filter(Boolean).join(" "),
+    platform: "Instagram Post",
+  }));
+
+  [...findings, ...gemSources, ...crawledPages, ...postTextSources].forEach(f => {
     const text = [f.title, f.snippet, f.url, f.platform].filter(Boolean).join(" ");
     let m;
     while ((m = handleRe.exec(text)) !== null) {
@@ -89,6 +103,23 @@ function buildAssociates(investigation) {
       freq[h] = (freq[h] || 0) + 1;
       snippetMap[h] = snippetMap[h] || f.platform || "OSINT";
     }
+  });
+
+  // ── Direct, high-confidence associates ──────────────────────────────────
+  // Real followers/connections pulled straight from the Instagram/Twitter
+  // follower scrapers ARE actual accounts linked to the target, so unlike
+  // the regex mining above they don't need to be "mentioned" anywhere to
+  // count as a connection — fold them into the same frequency map with a
+  // strong starting weight so they reliably surface as real, named
+  // associates rather than getting drowned out by incidental text mentions.
+  const directConnections = [
+    ...(investigation.instaFollowers   || []).map(f => ({ handle: (f.username || "").toLowerCase(), platform: "Instagram" })),
+    ...(investigation.twitterFollowers || []).map(f => ({ handle: (f.username || "").toLowerCase(), platform: "Twitter / X" })),
+  ].filter(c => c.handle && c.handle !== target.toLowerCase());
+
+  directConnections.forEach(({ handle, platform }) => {
+    freq[handle] = (freq[handle] || 0) + 4;
+    snippetMap[handle] = platform;
   });
 
   const sorted = Object.entries(freq)
